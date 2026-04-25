@@ -91,7 +91,7 @@ export default function TradeListPage() {
             </select>
           </div>
           <div>
-            <label className="label">方向</label>
+            <label className="label">方吁E/label>
             <select
               className="input-field"
               value={filterDir}
@@ -144,7 +144,7 @@ export default function TradeListPage() {
               setSearch("");
             }}
           >
-            リセット
+            リセチE��
           </button>
         </div>
       )}
@@ -211,7 +211,7 @@ export default function TradeListPage() {
                       {t.totalLots}lot
                     </div>
                     <div className="text-xs mt-0.5">
-                      {t.note.confidence ? "★".repeat(t.note.confidence) : ""}
+                      {t.note.confidence ? "☁E.repeat(t.note.confidence) : ""}
                     </div>
                   </div>
                 </div>
@@ -223,3 +223,4 @@ export default function TradeListPage() {
     </div>
   );
 }
+
