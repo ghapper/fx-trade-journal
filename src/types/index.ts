@@ -79,6 +79,7 @@ export interface OhlcBar {
 }
 
 export interface CsvColumnMap {
+  [key: string]: string | undefined;
   time: string;
   open: string;
   high: string;
