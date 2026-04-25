@@ -211,7 +211,7 @@ export default function TradeListPage() {
                       {t.totalLots}lot
                     </div>
                     <div className="text-xs mt-0.5">
-                      {t.confidence ? "★".repeat(t.confidence) : ""}
+                      {t.note.confidence ? "★".repeat(t.note.confidence) : ""}
                     </div>
                   </div>
                 </div>
