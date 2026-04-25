@@ -35,7 +35,7 @@ export function TradeChart({ bars1m, trade }: Props) {
         height: container.clientHeight,
         layout: {
           background: { color: "#0a0a0f" },
-          textColor: "#8888aa",
+          
         },
         grid: {
           vertLines: { color: "#1a1a24" },
@@ -48,11 +48,11 @@ export function TradeChart({ bars1m, trade }: Props) {
         },
         rightPriceScale: {
           borderColor: "#1e1e2e",
-          textColor: "#8888aa",
+          
         },
         timeScale: {
           borderColor: "#1e1e2e",
-          textColor: "#8888aa",
+          
           timeVisible: true,
           secondsVisible: false,
         },
