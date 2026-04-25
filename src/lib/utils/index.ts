@@ -69,7 +69,7 @@ export function calcPairStats(trades: ReconstructedTrade[]): PairStats[] {
     if (t.isWin) p.winCount++;
   }
 
-  for (const p of map.values()) {
+  for (const p of Array.from(map.values())) {
     p.winRate = p.tradeCount > 0 ? (p.winCount / p.tradeCount) * 100 : 0;
     p.avgHoldingMinutes = p.tradeCount > 0 ? p.avgHoldingMinutes / p.tradeCount : 0;
   }
