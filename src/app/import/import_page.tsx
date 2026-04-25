@@ -165,18 +165,22 @@ export default function ImportPage() {
       <div className="card p-3">
         <p className="text-xs text-text-muted mb-2">カラム名 (CSVヘッダーと一致させる)</p>
         <div className="grid grid-cols-3 gap-2">
-          {(["time", "open", "high", "low", "close", "volume"] as const).map((col) => (
-            <div key={col}>
-              <label className="label">{col}</label>
-              <input
-                className="input-field text-xs"
-                value={(colMap as Record<string, string | undefined>)[col] ?? ""}
-                onChange={(e) =>
-                  setColMap({ ...colMap, [col]: e.target.value || undefined })
-                }
-              />
-            </div>
-          ))}
+          {(["time", "open", "high", "low", "close", "volume"] as const).map((col) => {
+            const colMapAny = colMap as Record<string, string | undefined>;
+            return (
+              <div key={col}>
+                <label className="label">{col}</label>
+                <input
+                  className="input-field text-xs"
+                  value={colMapAny[col] ?? ""}
+                  onChange={(e) => {
+                    const next = { ...colMapAny, [col]: e.target.value || undefined };
+                    setColMap(next as typeof colMap);
+                  }}
+                />
+              </div>
+            );
+          })}
         </div>
       </div>
 
