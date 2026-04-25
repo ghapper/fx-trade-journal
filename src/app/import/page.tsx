@@ -10,7 +10,7 @@ import clsx from "clsx";
 
 const COLUMN_PRESETS = [
   {
-    label: "MT4/MT5 標準",
+    label: "MT4/MT5 標溁E,
     map: { time: "Date", open: "Open", high: "High", low: "Low", close: "Close", volume: "Volume" },
   },
   {
@@ -63,8 +63,8 @@ export default function ImportPage() {
     setParsed(true);
     toast(
       bars.length > 0
-        ? `${bars.length}件のOHLCデータを読み込みました`
-        : "データが読み込めませんでした"
+        ? `${bars.length}件のOHLCチE�Eタを読み込みました`
+        : "チE�Eタが読み込めませんでした"
     );
   };
 
@@ -74,7 +74,7 @@ export default function ImportPage() {
     try {
       const { bars, errors: errs } = parseCsv(csvText, colMap);
       if (bars.length === 0) {
-        toast.error("保存できるデータがありません");
+        toast.error("保存できるチE�Eタがありません");
         return;
       }
       await saveOhlc(pair, bars);
@@ -95,7 +95,7 @@ export default function ImportPage() {
   return (
     <div className="max-w-2xl mx-auto px-4 py-4 space-y-4">
       <h1 className="font-bold text-sm text-text-secondary uppercase tracking-wider">
-        OHLC データ取込
+        OHLC チE�Eタ取込
       </h1>
 
       {/* Pair */}
@@ -118,9 +118,8 @@ export default function ImportPage() {
       >
         <UploadIcon size={24} className="mx-auto mb-2 text-text-muted" />
         <p className="text-sm text-text-secondary">
-          CSVをドロップ、またはクリックして選択
-        </p>
-        <p className="text-xs text-text-muted mt-1">1分足OHLC CSV</p>
+          CSVをドロチE�E、また�EクリチE��して選抁E        </p>
+        <p className="text-xs text-text-muted mt-1">1刁E��OHLC CSV</p>
         <input
           id="csv-input"
           type="file"
@@ -136,13 +135,13 @@ export default function ImportPage() {
       {csvText && (
         <p className="text-xs text-profit flex items-center gap-1">
           <CheckCircleIcon size={12} />
-          ファイル読込済 ({csvText.split("\n").length}行)
+          ファイル読込渁E({csvText.split("\n").length}衁E
         </p>
       )}
 
       {/* Column mapping preset */}
       <div>
-        <label className="label">カラムマッピング プリセット</label>
+        <label className="label">カラムマッピング プリセチE��</label>
         <div className="flex gap-2 flex-wrap">
           {COLUMN_PRESETS.map((p, i) => (
             <button
@@ -163,7 +162,7 @@ export default function ImportPage() {
 
       {/* Column map fields */}
       <div className="card p-3">
-        <p className="text-xs text-text-muted mb-2">カラム名 (CSVヘッダーと一致させる)</p>
+        <p className="text-xs text-text-muted mb-2">カラム吁E(CSVヘッダーと一致させめE</p>
         <div className="grid grid-cols-3 gap-2">
           {(["time", "open", "high", "low", "close", "volume"] as const).map((col) => {
             const colMapAny = colMap as Record<string, string | undefined>;
@@ -198,7 +197,7 @@ export default function ImportPage() {
           disabled={!csvText || saving}
           className="btn-primary flex-1"
         >
-          {saving ? "保存中..." : "保存"}
+          {saving ? "保存中..." : "保孁E}
         </button>
       </div>
 
@@ -217,7 +216,7 @@ export default function ImportPage() {
       {/* Preview table */}
       {parsed && preview.length > 0 && (
         <div>
-          <p className="text-xs text-text-muted mb-2">プレビュー (先頭20行)</p>
+          <p className="text-xs text-text-muted mb-2">プレビュー (先頭20衁E</p>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
@@ -249,13 +248,14 @@ export default function ImportPage() {
 
       {/* CSV spec info */}
       <div className="card p-3 text-xs text-text-muted space-y-1">
-        <p className="font-bold text-text-secondary">対応CSV形式</p>
-        <p>・1行目はヘッダー行</p>
-        <p>・時刻: ISO8601 / YYYY.MM.DD HH:mm / Unixタイムスタンプ(秒/ミリ秒)</p>
-        <p>・区切り: カンマ</p>
-        <p>・文字コード: UTF-8 または Shift-JIS</p>
-        <p>・1分足データを読み込み、表示時に集約します</p>
+        <p className="font-bold text-text-secondary">対応CSV形弁E/p>
+        <p>・1行目はヘッダー衁E/p>
+        <p>・時刻: ISO8601 / YYYY.MM.DD HH:mm / UnixタイムスタンチE私Eミリ私E</p>
+        <p>・区刁E��: カンチE/p>
+        <p>・斁E��コーチE UTF-8 また�E Shift-JIS</p>
+        <p>・1刁E��チE�Eタを読み込み、表示時に雁E��E��まぁE/p>
       </div>
     </div>
   );
 }
+
