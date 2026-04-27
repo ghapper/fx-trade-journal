@@ -21,15 +21,14 @@ export function TradeChart({ bars1m, trade }: Props) {
 
   useEffect(() => {
     if (!containerRef.current) return;
-    let chart: unknown;
 
     (async () => {
       const LWC = await import("lightweight-charts");
       const createChart = (LWC as any).createChart;
-      const CrosshairMode = (LWC as any).CrosshairMode;
-      const container = containerRef.current!;
+      const container = containerRef.current;
+      if (!container) return;
 
-      chart = createChart(container, {
+      const chart = createChart(container, {
         width: container.clientWidth,
         height: container.clientHeight,
         layout: {
@@ -40,12 +39,7 @@ export function TradeChart({ bars1m, trade }: Props) {
           vertLines: { color: "#1a1a24" },
           horzLines: { color: "#1a1a24" },
         },
-        crosshair: {
-          mode: CrosshairMode?.Normal ?? 1,
-        },
-        rightPriceScale: {
-          borderColor: "#1e1e2e",
-        },
+        rightPriceScale: { borderColor: "#1e1e2e" },
         timeScale: {
           borderColor: "#1e1e2e",
           timeVisible: true,
@@ -53,7 +47,7 @@ export function TradeChart({ bars1m, trade }: Props) {
         },
       });
 
-      const series = (chart as any).addCandlestickSeries({
+      const series = chart.addCandlestickSeries({
         upColor: "#22c55e",
         downColor: "#ef4444",
         borderUpColor: "#22c55e",
@@ -67,8 +61,8 @@ export function TradeChart({ bars1m, trade }: Props) {
       setReady(true);
 
       const ro = new ResizeObserver(() => {
-        if (containerRef.current) {
-          (chart as any).applyOptions({
+        if (containerRef.current && chartRef.current) {
+          (chartRef.current as any).applyOptions({
             width: containerRef.current.clientWidth,
             height: containerRef.current.clientHeight,
           });
@@ -81,7 +75,7 @@ export function TradeChart({ bars1m, trade }: Props) {
 
     return () => {
       if (chartRef.current) {
-        (chartRef.current as any).remove();
+        try { (chartRef.current as any).remove(); } catch {}
         chartRef.current = null;
         seriesRef.current = null;
         setReady(false);
@@ -91,62 +85,72 @@ export function TradeChart({ bars1m, trade }: Props) {
 
   useEffect(() => {
     if (!ready || !seriesRef.current || bars1m.length === 0) return;
-    const bars = aggregateBars(bars1m, tf);
-    (seriesRef.current as any).setData(bars);
-    if (chartRef.current) {
-      (chartRef.current as any).timeScale().fitContent();
+    try {
+      const bars = aggregateBars(bars1m, tf);
+      (seriesRef.current as any).setData(bars);
+      if (chartRef.current) {
+        (chartRef.current as any).timeScale().fitContent();
+      }
+    } catch (e) {
+      console.error("Chart data error:", e);
     }
   }, [ready, bars1m, tf]);
 
   useEffect(() => {
     if (!ready || !seriesRef.current || !trade) return;
+    try {
+      const tfMinutes = TIMEFRAME_MINUTES[tf];
+      const tfSeconds = tfMinutes * 60;
+      const markers: unknown[] = [];
 
-    const tfMinutes = TIMEFRAME_MINUTES[tf];
-    const tfSeconds = tfMinutes * 60;
-    const markers: unknown[] = [];
+      for (const fill of trade.fills) {
+        const ts = Math.floor(new Date(fill.datetime).getTime() / 1000);
+        const barTime = Math.floor(ts / tfSeconds) * tfSeconds;
 
-    for (const fill of trade.fills) {
-      const ts = Math.floor(new Date(fill.datetime).getTime() / 1000);
-      const barTime = Math.floor(ts / tfSeconds) * tfSeconds;
-
-      if (fill.type === "ENTRY") {
-        markers.push({
-          time: barTime,
-          position: trade.direction === "BUY" ? "belowBar" : "aboveBar",
-          color: "#3b82f6",
-          shape: trade.direction === "BUY" ? "arrowUp" : "arrowDown",
-          text: `E ${fill.price}`,
-          size: 1,
-        });
-      } else {
-        markers.push({
-          time: barTime,
-          position: trade.direction === "BUY" ? "aboveBar" : "belowBar",
-          color: trade.totalPnlPips >= 0 ? "#22c55e" : "#ef4444",
-          shape: trade.direction === "BUY" ? "arrowDown" : "arrowUp",
-          text: `X ${fill.price}`,
-          size: 1,
-        });
+        if (fill.type === "ENTRY") {
+          markers.push({
+            time: barTime,
+            position: trade.direction === "BUY" ? "belowBar" : "aboveBar",
+            color: "#3b82f6",
+            shape: trade.direction === "BUY" ? "arrowUp" : "arrowDown",
+            text: `E ${fill.price}`,
+            size: 1,
+          });
+        } else {
+          markers.push({
+            time: barTime,
+            position: trade.direction === "BUY" ? "aboveBar" : "belowBar",
+            color: trade.totalPnlPips >= 0 ? "#22c55e" : "#ef4444",
+            shape: trade.direction === "BUY" ? "arrowDown" : "arrowUp",
+            text: `X ${fill.price}`,
+            size: 1,
+          });
+        }
       }
-    }
 
-    markers.sort((a: any, b: any) => a.time - b.time);
-    (seriesRef.current as any).setMarkers(markers);
+      markers.sort((a: any, b: any) => a.time - b.time);
+      (seriesRef.current as any).setMarkers(markers);
 
-    if (trade.fills.length > 0 && chartRef.current) {
-      const entryFills = trade.fills.filter((f) => f.type === "ENTRY");
-      const exitFills = trade.fills.filter((f) => f.type === "EXIT");
-      if (entryFills.length > 0 && exitFills.length > 0) {
-        const entryTs = Math.floor(new Date(entryFills[0].datetime).getTime() / 1000);
-        const exitTs = Math.floor(new Date(exitFills[exitFills.length - 1].datetime).getTime() / 1000);
-        const padding = (exitTs - entryTs) * 2 || tfSeconds * 20;
-        (chartRef.current as any).timeScale().setVisibleRange({
-          from: entryTs - padding,
-          to: exitTs + padding,
-        });
+      // Only scroll to range if we have OHLC data
+      if (bars1m.length > 0 && chartRef.current) {
+        const entryFills = trade.fills.filter((f) => f.type === "ENTRY");
+        const exitFills = trade.fills.filter((f) => f.type === "EXIT");
+        if (entryFills.length > 0 && exitFills.length > 0) {
+          const entryTs = Math.floor(new Date(entryFills[0].datetime).getTime() / 1000);
+          const exitTs = Math.floor(new Date(exitFills[exitFills.length - 1].datetime).getTime() / 1000);
+          const padding = (exitTs - entryTs) * 2 || tfSeconds * 20;
+          try {
+            (chartRef.current as any).timeScale().setVisibleRange({
+              from: entryTs - padding,
+              to: exitTs + padding,
+            });
+          } catch {}
+        }
       }
+    } catch (e) {
+      console.error("Chart marker error:", e);
     }
-  }, [ready, trade, tf]);
+  }, [ready, trade, tf, bars1m]);
 
   return (
     <div className="flex flex-col h-full">

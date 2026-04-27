@@ -112,7 +112,7 @@ export async function getSettings(): Promise<AppSettings> {
     .from("settings")
     .select("*")
     .eq("key", "appSettings")
-    .single();
+    .maybeSingle();
   return (data?.value as AppSettings) ?? DEFAULT_SETTINGS;
 }
 
