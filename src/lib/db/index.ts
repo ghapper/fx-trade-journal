@@ -1,114 +1,90 @@
 // src/lib/db/index.ts
-import { openDB, DBSchema, IDBPDatabase } from "idb";
+import { supabase } from "@/lib/supabase";
 import type { TradeGroup, OhlcBar, AppSettings } from "@/types";
-
-const DB_NAME = "fx-trade-journal";
-const DB_VERSION = 1;
-
-interface FxDB extends DBSchema {
-  tradeGroups: {
-    key: string;
-    value: TradeGroup;
-    indexes: { "by-pair": string; "by-date": string };
-  };
-  ohlcData: {
-    key: [string, string, number]; // [pair, timeframe, time]
-    value: { pair: string; timeframe: string } & OhlcBar;
-    indexes: { "by-pair-tf": [string, string] };
-  };
-  settings: {
-    key: string;
-    value: { key: string; value: unknown };
-  };
-}
-
-let dbInstance: IDBPDatabase<FxDB> | null = null;
-
-async function getDB(): Promise<IDBPDatabase<FxDB>> {
-  if (dbInstance) return dbInstance;
-  dbInstance = await openDB<FxDB>(DB_NAME, DB_VERSION, {
-    upgrade(db) {
-      // tradeGroups store
-      const tgStore = db.createObjectStore("tradeGroups", { keyPath: "id" });
-      tgStore.createIndex("by-pair", "pair");
-      tgStore.createIndex("by-date", "createdAt");
-
-      // ohlcData store
-      const ohlcStore = db.createObjectStore("ohlcData", {
-        keyPath: ["pair", "timeframe", "time"],
-      });
-      ohlcStore.createIndex("by-pair-tf", ["pair", "timeframe"]);
-
-      // settings store
-      db.createObjectStore("settings", { keyPath: "key" });
-    },
-  });
-  return dbInstance;
-}
 
 // ---- TradeGroup CRUD ----
 
 export async function getAllTradeGroups(): Promise<TradeGroup[]> {
-  const db = await getDB();
-  const all = await db.getAll("tradeGroups");
-  return all.sort(
-    (a, b) =>
-      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  );
+  const { data, error } = await supabase
+    .from("trade_groups")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map(rowToTradeGroup);
 }
 
 export async function getTradeGroup(id: string): Promise<TradeGroup | undefined> {
-  const db = await getDB();
-  return db.get("tradeGroups", id);
+  const { data, error } = await supabase
+    .from("trade_groups")
+    .select("*")
+    .eq("id", id)
+    .single();
+  if (error) return undefined;
+  return rowToTradeGroup(data);
 }
 
 export async function saveTradeGroup(tg: TradeGroup): Promise<void> {
-  const db = await getDB();
-  await db.put("tradeGroups", tg);
+  const { error } = await supabase.from("trade_groups").upsert({
+    id: tg.id,
+    pair: tg.pair,
+    direction: tg.direction,
+    created_at: tg.createdAt,
+    note: tg.note,
+    fills: tg.fills,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw error;
 }
 
 export async function deleteTradeGroup(id: string): Promise<void> {
-  const db = await getDB();
-  await db.delete("tradeGroups", id);
+  const { error } = await supabase.from("trade_groups").delete().eq("id", id);
+  if (error) throw error;
 }
 
-// ---- OHLC ----
+function rowToTradeGroup(row: Record<string, unknown>): TradeGroup {
+  return {
+    id: row.id as string,
+    pair: row.pair as string,
+    direction: row.direction as "BUY" | "SELL",
+    createdAt: row.created_at as string,
+    note: row.note as TradeGroup["note"],
+    fills: row.fills as TradeGroup["fills"],
+  };
+}
+
+// ---- OHLC (LocalStorageに保存) ----
+const ohlcMemory = new Map<string, OhlcBar[]>();
 
 export async function saveOhlcBars(
   pair: string,
   timeframe: string,
   bars: OhlcBar[]
 ): Promise<void> {
-  const db = await getDB();
-  const tx = db.transaction("ohlcData", "readwrite");
-  await Promise.all(
-    bars.map((bar) =>
-      tx.store.put({ pair, timeframe, ...bar })
-    )
-  );
-  await tx.done;
+  ohlcMemory.set(`${pair}_${timeframe}`, bars);
+  try {
+    localStorage.setItem(`ohlc_${pair}_${timeframe}`, JSON.stringify(bars));
+  } catch {}
 }
 
 export async function getOhlcBars(
   pair: string,
   timeframe: string
 ): Promise<OhlcBar[]> {
-  const db = await getDB();
-  const records = await db.getAllFromIndex(
-    "ohlcData",
-    "by-pair-tf",
-    [pair, timeframe]
-  );
-  return records
-    .map(({ pair: _p, timeframe: _tf, ...bar }) => bar as OhlcBar)
-    .sort((a, b) => a.time - b.time);
+  const key = `${pair}_${timeframe}`;
+  if (ohlcMemory.has(key)) return ohlcMemory.get(key)!;
+  try {
+    const stored = localStorage.getItem(`ohlc_${key}`);
+    if (stored) {
+      const bars = JSON.parse(stored);
+      ohlcMemory.set(key, bars);
+      return bars;
+    }
+  } catch {}
+  return [];
 }
 
 export async function getAvailablePairsInOhlc(): Promise<string[]> {
-  const db = await getDB();
-  const all = await db.getAll("ohlcData");
-  const pairs = new Set(all.map((r) => r.pair));
-  return Array.from(pairs);
+  return Array.from(ohlcMemory.keys()).map((k) => k.split("_")[0]);
 }
 
 // ---- Settings ----
@@ -132,38 +108,36 @@ const DEFAULT_SETTINGS: AppSettings = {
 };
 
 export async function getSettings(): Promise<AppSettings> {
-  const db = await getDB();
-  const rec = await db.get("settings", "appSettings");
-  return (rec?.value as AppSettings) ?? DEFAULT_SETTINGS;
+  const { data } = await supabase
+    .from("settings")
+    .select("*")
+    .eq("key", "appSettings")
+    .single();
+  return (data?.value as AppSettings) ?? DEFAULT_SETTINGS;
 }
 
 export async function saveSettings(settings: AppSettings): Promise<void> {
-  const db = await getDB();
-  await db.put("settings", { key: "appSettings", value: settings });
+  const { error } = await supabase.from("settings").upsert({
+    key: "appSettings",
+    value: settings,
+  });
+  if (error) throw error;
 }
 
-// ---- Export / Import ----
-
 export async function exportAllData(): Promise<string> {
-  const db = await getDB();
-  const tradeGroups = await db.getAll("tradeGroups");
-  const settings = await db.getAll("settings");
+  const tradeGroups = await getAllTradeGroups();
+  const settings = await getSettings();
   return JSON.stringify({ tradeGroups, settings }, null, 2);
 }
 
 export async function importAllData(jsonStr: string): Promise<void> {
   const data = JSON.parse(jsonStr);
-  const db = await getDB();
-  const tx = db.transaction(["tradeGroups", "settings"], "readwrite");
   if (data.tradeGroups) {
     for (const tg of data.tradeGroups) {
-      await tx.objectStore("tradeGroups").put(tg);
+      await saveTradeGroup(tg);
     }
   }
   if (data.settings) {
-    for (const s of data.settings) {
-      await tx.objectStore("settings").put(s);
-    }
+    await saveSettings(data.settings);
   }
-  await tx.done;
 }
