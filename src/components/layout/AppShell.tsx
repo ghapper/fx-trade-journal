@@ -1,9 +1,10 @@
 "use client";
 // src/components/layout/AppShell.tsx
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useAppStore } from "@/store";
+import { supabase } from "@/lib/supabase";
 import {
   HomeIcon,
   ListIcon,
@@ -11,8 +12,10 @@ import {
   BarChart2Icon,
   SettingsIcon,
   UploadIcon,
+  LogOutIcon,
 } from "lucide-react";
 import clsx from "clsx";
+import toast from "react-hot-toast";
 
 const NAV = [
   { href: "/", label: "ホーム", icon: HomeIcon },
@@ -25,11 +28,60 @@ const NAV = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const loadAll = useAppStore((s) => s.loadAll);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
-    loadAll();
-  }, [loadAll]);
+    // 認証状態を確認
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        setUserEmail(session.user.email ?? null);
+        loadAll();
+      } else if (pathname !== "/auth") {
+        router.push("/auth");
+      }
+      setAuthChecked(true);
+    });
+
+    // 認証状態の変化を監視
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        if (session) {
+          setUserEmail(session.user.email ?? null);
+          if (pathname === "/auth") {
+            router.push("/");
+          }
+        } else {
+          setUserEmail(null);
+          router.push("/auth");
+        }
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    toast.success("ログアウトしました");
+    router.push("/auth");
+  };
+
+  // 認証チェック中は何も表示しない
+  if (!authChecked) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-bg-primary text-text-muted text-sm">
+        読み込み中...
+      </div>
+    );
+  }
+
+  // 認証画面はナビなしで表示
+  if (pathname === "/auth") {
+    return <>{children}</>;
+  }
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-bg-primary">
@@ -56,6 +108,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </Link>
           ))}
         </nav>
+        {/* User info & logout */}
+        <div className="flex items-center gap-2">
+          {userEmail && (
+            <span className="text-xs text-text-muted hidden md:block">{userEmail}</span>
+          )}
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-1 text-text-muted hover:text-loss text-xs transition-colors"
+          >
+            <LogOutIcon size={14} />
+            <span className="hidden md:block">ログアウト</span>
+          </button>
+        </div>
       </header>
 
       {/* Main content */}

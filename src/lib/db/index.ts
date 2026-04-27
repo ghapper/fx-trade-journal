@@ -24,6 +24,7 @@ export async function getTradeGroup(id: string): Promise<TradeGroup | undefined>
 }
 
 export async function saveTradeGroup(tg: TradeGroup): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
   const { error } = await supabase.from("trade_groups").upsert({
     id: tg.id,
     pair: tg.pair,
@@ -32,6 +33,7 @@ export async function saveTradeGroup(tg: TradeGroup): Promise<void> {
     note: tg.note,
     fills: tg.fills,
     updated_at: new Date().toISOString(),
+    user_id: user?.id,
   });
   if (error) throw error;
 }
@@ -117,9 +119,11 @@ export async function getSettings(): Promise<AppSettings> {
 }
 
 export async function saveSettings(settings: AppSettings): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
   const { error } = await supabase.from("settings").upsert({
     key: "appSettings",
     value: settings,
+    user_id: user?.id,
   });
   if (error) throw error;
 }
