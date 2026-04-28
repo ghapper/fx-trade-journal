@@ -54,39 +54,81 @@ function rowToTradeGroup(row: Record<string, unknown>): TradeGroup {
   };
 }
 
-// ---- OHLC (LocalStorageに保存) ----
-const ohlcMemory = new Map<string, OhlcBar[]>();
+// ---- OHLC (Supabaseに保存) ----
 
 export async function saveOhlcBars(
   pair: string,
   timeframe: string,
   bars: OhlcBar[]
 ): Promise<void> {
-  ohlcMemory.set(`${pair}_${timeframe}`, bars);
-  try {
-    localStorage.setItem(`ohlc_${pair}_${timeframe}`, JSON.stringify(bars));
-  } catch {}
+  if (bars.length === 0) return;
+  const rows = bars.map((b) => ({
+    pair,
+    timeframe,
+    time: b.time,
+    open: b.open,
+    high: b.high,
+    low: b.low,
+    close: b.close,
+    volume: b.volume ?? null,
+  }));
+  const { error } = await supabase
+    .from("ohlc_data")
+    .upsert(rows, { onConflict: "pair,timeframe,time" });
+  if (error) console.error("OHLC save error:", error);
 }
 
 export async function getOhlcBars(
   pair: string,
-  timeframe: string
+  timeframe: string,
+  startTime?: number,
+  endTime?: number
 ): Promise<OhlcBar[]> {
-  const key = `${pair}_${timeframe}`;
-  if (ohlcMemory.has(key)) return ohlcMemory.get(key)!;
-  try {
-    const stored = localStorage.getItem(`ohlc_${key}`);
-    if (stored) {
-      const bars = JSON.parse(stored);
-      ohlcMemory.set(key, bars);
-      return bars;
-    }
-  } catch {}
-  return [];
+  let query = supabase
+    .from("ohlc_data")
+    .select("time,open,high,low,close,volume")
+    .eq("pair", pair)
+    .eq("timeframe", timeframe)
+    .order("time", { ascending: true });
+
+  if (startTime) query = query.gte("time", startTime);
+  if (endTime) query = query.lte("time", endTime);
+
+  const { data, error } = await query;
+  if (error) return [];
+  return (data ?? []).map((r) => ({
+    time: r.time,
+    open: r.open,
+    high: r.high,
+    low: r.low,
+    close: r.close,
+    volume: r.volume ?? undefined,
+  }));
+}
+
+export async function hasOhlcData(
+  pair: string,
+  timeframe: string,
+  startTime: number,
+  endTime: number
+): Promise<boolean> {
+  const { count } = await supabase
+    .from("ohlc_data")
+    .select("*", { count: "exact", head: true })
+    .eq("pair", pair)
+    .eq("timeframe", timeframe)
+    .gte("time", startTime)
+    .lte("time", endTime);
+  return (count ?? 0) > 0;
 }
 
 export async function getAvailablePairsInOhlc(): Promise<string[]> {
-  return Array.from(ohlcMemory.keys()).map((k) => k.split("_")[0]);
+  const { data } = await supabase
+    .from("ohlc_data")
+    .select("pair")
+    .limit(100);
+  const pairs = new Set((data ?? []).map((r) => r.pair));
+  return Array.from(pairs);
 }
 
 // ---- Settings ----
@@ -144,73 +186,4 @@ export async function importAllData(jsonStr: string): Promise<void> {
   if (data.settings) {
     await saveSettings(data.settings);
   }
-}
-
-// ---- OHLC (Supabaseに保存) ----
-
-export async function saveOhlcBars(
-  pair: string,
-  timeframe: string,
-  bars: OhlcBar[]
-): Promise<void> {
-  if (bars.length === 0) return;
-  const rows = bars.map((b) => ({
-    pair,
-    timeframe,
-    time: b.time,
-    open: b.open,
-    high: b.high,
-    low: b.low,
-    close: b.close,
-    volume: b.volume ?? null,
-  }));
-  // upsertで重複は無視
-  const { error } = await supabase
-    .from("ohlc_data")
-    .upsert(rows, { onConflict: "pair,timeframe,time" });
-  if (error) console.error("OHLC save error:", error);
-}
-
-export async function getOhlcBars(
-  pair: string,
-  timeframe: string,
-  startTime?: number,
-  endTime?: number
-): Promise<OhlcBar[]> {
-  let query = supabase
-    .from("ohlc_data")
-    .select("time,open,high,low,close,volume")
-    .eq("pair", pair)
-    .eq("timeframe", timeframe)
-    .order("time", { ascending: true });
-
-  if (startTime) query = query.gte("time", startTime);
-  if (endTime) query = query.lte("time", endTime);
-
-  const { data, error } = await query;
-  if (error) return [];
-  return (data ?? []).map((r) => ({
-    time: r.time,
-    open: r.open,
-    high: r.high,
-    low: r.low,
-    close: r.close,
-    volume: r.volume ?? undefined,
-  }));
-}
-
-export async function hasOhlcData(
-  pair: string,
-  timeframe: string,
-  startTime: number,
-  endTime: number
-): Promise<boolean> {
-  const { count } = await supabase
-    .from("ohlc_data")
-    .select("*", { count: "exact", head: true })
-    .eq("pair", pair)
-    .eq("timeframe", timeframe)
-    .gte("time", startTime)
-    .lte("time", endTime);
-  return (count ?? 0) > 0;
 }
