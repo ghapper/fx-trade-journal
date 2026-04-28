@@ -123,3 +123,28 @@ export const CURRENCY_PAIRS = [
   "AUDUSD", "AUDJPY", "NZDUSD", "USDCHF", "USDCAD",
   "CADJPY", "CHFJPY", "EURGBP", "EURAUD", "EURCAD",
 ];
+
+// 資産クラス別シンボルリスト
+export const SYMBOL_LIST = {
+  forex: [
+    "USDJPY", "EURUSD", "EURJPY", "GBPUSD", "GBPJPY",
+    "AUDUSD", "AUDJPY", "NZDUSD", "USDCHF", "USDCAD",
+    "CADJPY", "CHFJPY", "EURGBP", "EURAUD", "EURCAD",
+  ],
+  stock: [
+    "AAPL", "GOOGL", "MSFT", "AMZN", "NVDA", "TSLA", "META",
+    "7203.T", "6758.T", "9984.T", "8306.T", "6861.T",
+  ],
+  crypto: [
+    "BTC/USD", "ETH/USD", "XRP/USD", "SOL/USD", "ADA/USD",
+    "DOGE/USD", "MATIC/USD", "AVAX/USD", "DOT/USD", "LINK/USD",
+  ],
+};
+
+export type AssetClass = "forex" | "stock" | "crypto";
+
+export const ASSET_CLASS_LABELS: Record<AssetClass, string> = {
+  forex: "FX",
+  stock: "株式",
+  crypto: "クリプト",
+};
