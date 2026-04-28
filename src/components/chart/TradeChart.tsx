@@ -4,26 +4,22 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import type { OhlcBar, ReconstructedTrade, Timeframe } from "@/types";
 import { aggregateBars, TIMEFRAME_MINUTES } from "@/lib/utils/ohlc";
 import { fetchOhlcFromTwelveData, getDateRangeForTrade } from "@/lib/utils/twelvedata";
-import { saveOhlcBars, getOhlcBars, hasOhlcData } from "@/lib/db";
+import { saveOhlcBars, getOhlcBarsByTradeId, hasOhlcDataForTrade } from "@/lib/db";
 import clsx from "clsx";
 import { RefreshCwIcon } from "lucide-react";
 
 const TIMEFRAMES: Timeframe[] = ["1m", "5m", "10m", "15m", "30m", "1h", "4h"];
-
-// UTC→JSTオフセット（秒）
 const JST_OFFSET = 9 * 60 * 60;
 
-// OHLCのtimeをJSTに変換
 function toJstBars(bars: OhlcBar[]): OhlcBar[] {
   return bars.map((b) => ({ ...b, time: b.time + JST_OFFSET }));
 }
 
 interface Props {
-  trade?: ReconstructedTrade;
-  pair?: string;
+  trade: ReconstructedTrade;
 }
 
-export function TradeChart({ trade, pair }: Props) {
+export function TradeChart({ trade }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<unknown>(null);
   const seriesRef = useRef<unknown>(null);
@@ -33,23 +29,16 @@ export function TradeChart({ trade, pair }: Props) {
   const [fetching, setFetching] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  const targetPair = pair ?? trade?.pair;
-
   const loadOhlc = useCallback(async (forceRefresh = false) => {
-    if (!targetPair) return;
     setFetching(true);
     setFetchError(null);
 
     try {
-      const tradeDatetime = trade?.firstEntryDatetime ?? new Date().toISOString();
-      const { startDate, endDate } = getDateRangeForTrade(tradeDatetime);
-      const startTime = Math.floor(new Date(startDate).getTime() / 1000);
-      const endTime = Math.floor(new Date(endDate).getTime() / 1000) + 86400;
-
+      // まずトレードIDで保存済みデータを確認
       if (!forceRefresh) {
-        const hasData = await hasOhlcData(targetPair, "1m", startTime, endTime);
+        const hasData = await hasOhlcDataForTrade(trade.id);
         if (hasData) {
-          const stored = await getOhlcBars(targetPair, "1m", startTime, endTime);
+          const stored = await getOhlcBarsByTradeId(trade.id);
           if (stored.length > 0) {
             setBars1m(stored);
             setFetching(false);
@@ -58,8 +47,10 @@ export function TradeChart({ trade, pair }: Props) {
         }
       }
 
+      // APIから取得（トレード日時の前後3日）
+      const { startDate, endDate } = getDateRangeForTrade(trade.firstEntryDatetime);
       const { bars, error } = await fetchOhlcFromTwelveData({
-        symbol: targetPair,
+        symbol: trade.pair,
         timeframe: "1m",
         outputSize: 5000,
         startDate,
@@ -70,7 +61,8 @@ export function TradeChart({ trade, pair }: Props) {
         setFetchError(error);
       } else if (bars.length > 0) {
         setBars1m(bars);
-        await saveOhlcBars(targetPair, "1m", bars);
+        // トレードIDと紐付けて保存
+        await saveOhlcBars(trade.pair, "1m", bars, trade.id);
       } else {
         setFetchError("データが取得できませんでした");
       }
@@ -79,7 +71,7 @@ export function TradeChart({ trade, pair }: Props) {
     } finally {
       setFetching(false);
     }
-  }, [targetPair, trade?.firstEntryDatetime]);
+  }, [trade.id, trade.pair, trade.firstEntryDatetime]);
 
   useEffect(() => {
     loadOhlc();
@@ -104,19 +96,6 @@ export function TradeChart({ trade, pair }: Props) {
           borderColor: "#1e1e2e",
           timeVisible: true,
           secondsVisible: false,
-          // JSTとして表示
-          localization: {
-            timeFormatter: (time: number) => {
-              const date = new Date(time * 1000);
-              return date.toLocaleString("ja-JP", {
-                timeZone: "Asia/Tokyo",
-                month: "2-digit",
-                day: "2-digit",
-                hour: "2-digit",
-                minute: "2-digit",
-              });
-            },
-          },
         },
       });
 
@@ -152,7 +131,7 @@ export function TradeChart({ trade, pair }: Props) {
     };
   }, []);
 
-  // データ更新（JSTに変換して描画）
+  // データ更新（JSTに変換）
   useEffect(() => {
     if (!ready || !seriesRef.current || bars1m.length === 0) return;
     try {
@@ -162,15 +141,14 @@ export function TradeChart({ trade, pair }: Props) {
     } catch (e) { console.error("Chart data error:", e); }
   }, [ready, bars1m, tf]);
 
-  // マーカー＋エントリー位置にスクロール
+  // マーカー＋エントリー位置へスクロール
   useEffect(() => {
-    if (!ready || !seriesRef.current || !trade || bars1m.length === 0) return;
+    if (!ready || !seriesRef.current || bars1m.length === 0) return;
     try {
       const tfSeconds = TIMEFRAME_MINUTES[tf] * 60;
       const markers: unknown[] = [];
 
       for (const fill of trade.fills) {
-        // JSTに変換したtimestampでマーカーを配置
         const ts = Math.floor(new Date(fill.datetime).getTime() / 1000) + JST_OFFSET;
         const barTime = Math.floor(ts / tfSeconds) * tfSeconds;
         if (fill.type === "ENTRY") {
@@ -199,13 +177,11 @@ export function TradeChart({ trade, pair }: Props) {
       if (chartRef.current) {
         const entryFills = trade.fills.filter((f) => f.type === "ENTRY");
         const exitFills = trade.fills.filter((f) => f.type === "EXIT");
-
         if (entryFills.length > 0) {
           const entryTs = Math.floor(new Date(entryFills[0].datetime).getTime() / 1000) + JST_OFFSET;
           const exitTs = exitFills.length > 0
             ? Math.floor(new Date(exitFills[exitFills.length - 1].datetime).getTime() / 1000) + JST_OFFSET
             : entryTs + tfSeconds * 10;
-
           const padding = Math.max((exitTs - entryTs) * 3, tfSeconds * 30);
           try {
             (chartRef.current as any).timeScale().setVisibleRange({
@@ -230,24 +206,20 @@ export function TradeChart({ trade, pair }: Props) {
         ))}
         <div className="ml-auto flex items-center gap-2">
           {fetchError && <span className="text-xs text-loss">{fetchError}</span>}
-          {targetPair && (
-            <button onClick={() => loadOhlc(true)} disabled={fetching}
-              className="flex items-center gap-1 text-xs text-text-muted hover:text-text-primary transition-colors">
-              <RefreshCwIcon size={12} className={fetching ? "animate-spin" : ""} />
-              {fetching ? "取得中..." : "更新"}
-            </button>
-          )}
+          <button onClick={() => loadOhlc(true)} disabled={fetching}
+            className="flex items-center gap-1 text-xs text-text-muted hover:text-text-primary transition-colors">
+            <RefreshCwIcon size={12} className={fetching ? "animate-spin" : ""} />
+            {fetching ? "取得中..." : "更新"}
+          </button>
         </div>
       </div>
       <div ref={containerRef} className="flex-1 relative">
         {bars1m.length === 0 && !fetching && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-text-muted text-sm">
             <span>OHLCデータなし</span>
-            {targetPair && (
-              <button onClick={() => loadOhlc(true)} className="text-xs text-accent-blue hover:underline">
-                {targetPair}のデータを取得する
-              </button>
-            )}
+            <button onClick={() => loadOhlc(true)} className="text-xs text-accent-blue hover:underline">
+              データを取得する
+            </button>
           </div>
         )}
         {fetching && bars1m.length === 0 && (

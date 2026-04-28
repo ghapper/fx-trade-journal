@@ -54,12 +54,13 @@ function rowToTradeGroup(row: Record<string, unknown>): TradeGroup {
   };
 }
 
-// ---- OHLC (Supabaseに保存) ----
+// ---- OHLC (Supabaseに保存・トレードIDで紐付け) ----
 
 export async function saveOhlcBars(
   pair: string,
   timeframe: string,
-  bars: OhlcBar[]
+  bars: OhlcBar[],
+  tradeId?: string
 ): Promise<void> {
   if (bars.length === 0) return;
   const rows = bars.map((b) => ({
@@ -71,11 +72,39 @@ export async function saveOhlcBars(
     low: b.low,
     close: b.close,
     volume: b.volume ?? null,
+    trade_id: tradeId ?? null,
   }));
   const { error } = await supabase
     .from("ohlc_data")
     .upsert(rows, { onConflict: "pair,timeframe,time" });
   if (error) console.error("OHLC save error:", error);
+}
+
+export async function getOhlcBarsByTradeId(tradeId: string): Promise<OhlcBar[]> {
+  const { data, error } = await supabase
+    .from("ohlc_data")
+    .select("time,open,high,low,close,volume")
+    .eq("trade_id", tradeId)
+    .eq("timeframe", "1m")
+    .order("time", { ascending: true });
+  if (error) return [];
+  return (data ?? []).map((r) => ({
+    time: r.time,
+    open: r.open,
+    high: r.high,
+    low: r.low,
+    close: r.close,
+    volume: r.volume ?? undefined,
+  }));
+}
+
+export async function hasOhlcDataForTrade(tradeId: string): Promise<boolean> {
+  const { count } = await supabase
+    .from("ohlc_data")
+    .select("*", { count: "exact", head: true })
+    .eq("trade_id", tradeId)
+    .eq("timeframe", "1m");
+  return (count ?? 0) > 0;
 }
 
 export async function getOhlcBars(
@@ -90,18 +119,12 @@ export async function getOhlcBars(
     .eq("pair", pair)
     .eq("timeframe", timeframe)
     .order("time", { ascending: true });
-
   if (startTime) query = query.gte("time", startTime);
   if (endTime) query = query.lte("time", endTime);
-
   const { data, error } = await query;
   if (error) return [];
   return (data ?? []).map((r) => ({
-    time: r.time,
-    open: r.open,
-    high: r.high,
-    low: r.low,
-    close: r.close,
+    time: r.time, open: r.open, high: r.high, low: r.low, close: r.close,
     volume: r.volume ?? undefined,
   }));
 }
@@ -115,18 +138,13 @@ export async function hasOhlcData(
   const { count } = await supabase
     .from("ohlc_data")
     .select("*", { count: "exact", head: true })
-    .eq("pair", pair)
-    .eq("timeframe", timeframe)
-    .gte("time", startTime)
-    .lte("time", endTime);
+    .eq("pair", pair).eq("timeframe", timeframe)
+    .gte("time", startTime).lte("time", endTime);
   return (count ?? 0) > 0;
 }
 
 export async function getAvailablePairsInOhlc(): Promise<string[]> {
-  const { data } = await supabase
-    .from("ohlc_data")
-    .select("pair")
-    .limit(100);
+  const { data } = await supabase.from("ohlc_data").select("pair").limit(100);
   const pairs = new Set((data ?? []).map((r) => r.pair));
   return Array.from(pairs);
 }
