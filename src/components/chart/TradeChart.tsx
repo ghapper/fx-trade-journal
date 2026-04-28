@@ -10,6 +10,14 @@ import { RefreshCwIcon } from "lucide-react";
 
 const TIMEFRAMES: Timeframe[] = ["1m", "5m", "10m", "15m", "30m", "1h", "4h"];
 
+// UTC→JSTオフセット（秒）
+const JST_OFFSET = 9 * 60 * 60;
+
+// OHLCのtimeをJSTに変換
+function toJstBars(bars: OhlcBar[]): OhlcBar[] {
+  return bars.map((b) => ({ ...b, time: b.time + JST_OFFSET }));
+}
+
 interface Props {
   trade?: ReconstructedTrade;
   pair?: string;
@@ -33,13 +41,11 @@ export function TradeChart({ trade, pair }: Props) {
     setFetchError(null);
 
     try {
-      // トレード日時から前後3日の範囲を計算
       const tradeDatetime = trade?.firstEntryDatetime ?? new Date().toISOString();
       const { startDate, endDate } = getDateRangeForTrade(tradeDatetime);
       const startTime = Math.floor(new Date(startDate).getTime() / 1000);
       const endTime = Math.floor(new Date(endDate).getTime() / 1000) + 86400;
 
-      // すでにDBにデータがあればそれを使う
       if (!forceRefresh) {
         const hasData = await hasOhlcData(targetPair, "1m", startTime, endTime);
         if (hasData) {
@@ -52,7 +58,6 @@ export function TradeChart({ trade, pair }: Props) {
         }
       }
 
-      // APIから取得
       const { bars, error } = await fetchOhlcFromTwelveData({
         symbol: targetPair,
         timeframe: "1m",
@@ -65,19 +70,17 @@ export function TradeChart({ trade, pair }: Props) {
         setFetchError(error);
       } else if (bars.length > 0) {
         setBars1m(bars);
-        // Supabaseに保存
         await saveOhlcBars(targetPair, "1m", bars);
       } else {
         setFetchError("データが取得できませんでした");
       }
-    } catch (e) {
+    } catch {
       setFetchError("取得エラー");
     } finally {
       setFetching(false);
     }
   }, [targetPair, trade?.firstEntryDatetime]);
 
-  // 初回マウント時に自動ロード
   useEffect(() => {
     loadOhlc();
   }, [loadOhlc]);
@@ -97,7 +100,24 @@ export function TradeChart({ trade, pair }: Props) {
         layout: { background: { color: "#0a0a0f" }, textColor: "#8888aa" },
         grid: { vertLines: { color: "#1a1a24" }, horzLines: { color: "#1a1a24" } },
         rightPriceScale: { borderColor: "#1e1e2e" },
-        timeScale: { borderColor: "#1e1e2e", timeVisible: true, secondsVisible: false },
+        timeScale: {
+          borderColor: "#1e1e2e",
+          timeVisible: true,
+          secondsVisible: false,
+          // JSTとして表示
+          localization: {
+            timeFormatter: (time: number) => {
+              const date = new Date(time * 1000);
+              return date.toLocaleString("ja-JP", {
+                timeZone: "Asia/Tokyo",
+                month: "2-digit",
+                day: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+              });
+            },
+          },
+        },
       });
 
       const series = chart.addCandlestickSeries({
@@ -132,25 +152,26 @@ export function TradeChart({ trade, pair }: Props) {
     };
   }, []);
 
-  // データ更新
+  // データ更新（JSTに変換して描画）
   useEffect(() => {
     if (!ready || !seriesRef.current || bars1m.length === 0) return;
     try {
-      const bars = aggregateBars(bars1m, tf);
-      (seriesRef.current as any).setData(bars);
-      if (chartRef.current) (chartRef.current as any).timeScale().fitContent();
+      const rawBars = aggregateBars(bars1m, tf);
+      const jstBars = toJstBars(rawBars);
+      (seriesRef.current as any).setData(jstBars);
     } catch (e) { console.error("Chart data error:", e); }
   }, [ready, bars1m, tf]);
 
-  // マーカー
+  // マーカー＋エントリー位置にスクロール
   useEffect(() => {
-    if (!ready || !seriesRef.current || !trade) return;
+    if (!ready || !seriesRef.current || !trade || bars1m.length === 0) return;
     try {
       const tfSeconds = TIMEFRAME_MINUTES[tf] * 60;
       const markers: unknown[] = [];
 
       for (const fill of trade.fills) {
-        const ts = Math.floor(new Date(fill.datetime).getTime() / 1000);
+        // JSTに変換したtimestampでマーカーを配置
+        const ts = Math.floor(new Date(fill.datetime).getTime() / 1000) + JST_OFFSET;
         const barTime = Math.floor(ts / tfSeconds) * tfSeconds;
         if (fill.type === "ENTRY") {
           markers.push({
@@ -174,13 +195,18 @@ export function TradeChart({ trade, pair }: Props) {
       markers.sort((a: any, b: any) => a.time - b.time);
       (seriesRef.current as any).setMarkers(markers);
 
-      if (bars1m.length > 0 && chartRef.current) {
+      // エントリー位置にスクロール
+      if (chartRef.current) {
         const entryFills = trade.fills.filter((f) => f.type === "ENTRY");
         const exitFills = trade.fills.filter((f) => f.type === "EXIT");
-        if (entryFills.length > 0 && exitFills.length > 0) {
-          const entryTs = Math.floor(new Date(entryFills[0].datetime).getTime() / 1000);
-          const exitTs = Math.floor(new Date(exitFills[exitFills.length - 1].datetime).getTime() / 1000);
-          const padding = (exitTs - entryTs) * 2 || tfSeconds * 20;
+
+        if (entryFills.length > 0) {
+          const entryTs = Math.floor(new Date(entryFills[0].datetime).getTime() / 1000) + JST_OFFSET;
+          const exitTs = exitFills.length > 0
+            ? Math.floor(new Date(exitFills[exitFills.length - 1].datetime).getTime() / 1000) + JST_OFFSET
+            : entryTs + tfSeconds * 10;
+
+          const padding = Math.max((exitTs - entryTs) * 3, tfSeconds * 30);
           try {
             (chartRef.current as any).timeScale().setVisibleRange({
               from: entryTs - padding,
@@ -206,8 +232,7 @@ export function TradeChart({ trade, pair }: Props) {
           {fetchError && <span className="text-xs text-loss">{fetchError}</span>}
           {targetPair && (
             <button onClick={() => loadOhlc(true)} disabled={fetching}
-              className="flex items-center gap-1 text-xs text-text-muted hover:text-text-primary transition-colors"
-              title="再取得">
+              className="flex items-center gap-1 text-xs text-text-muted hover:text-text-primary transition-colors">
               <RefreshCwIcon size={12} className={fetching ? "animate-spin" : ""} />
               {fetching ? "取得中..." : "更新"}
             </button>
