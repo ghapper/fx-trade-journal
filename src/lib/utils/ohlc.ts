@@ -60,7 +60,11 @@ export function parseCsv(
   const lines = csv.trim().split("\n");
   if (lines.length < 2) return { bars: [], errors: ["CSVが空です"] };
 
-  const headers = lines[0].split(",").map((h) => h.trim().replace(/"/g, ""));
+  // カンマかタブか自動判定
+  const firstLine = lines[0];
+  const delimiter = firstLine.includes("\t") ? "\t" : ",";
+
+  const headers = firstLine.split(delimiter).map((h) => h.trim().replace(/"/g, ""));
   const errors: string[] = [];
   const bars: OhlcBar[] = [];
 
@@ -86,7 +90,7 @@ export function parseCsv(
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line) continue;
-    const cols = line.split(",").map((c) => c.trim().replace(/"/g, ""));
+    const cols = line.split(delimiter).map((c) => c.trim().replace(/"/g, ""));
 
     try {
       const timeRaw = cols[idx.time];

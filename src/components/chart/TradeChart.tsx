@@ -16,15 +16,24 @@ function toJstBars(bars: OhlcBar[]): OhlcBar[] {
   return bars.map((b) => ({ ...b, time: b.time + JST_OFFSET }));
 }
 
-// デフォルトのCSVカラムマッピング（MT4形式）
-const DEFAULT_COL_MAP = {
-  time: "Date",
-  open: "Open",
-  high: "High",
-  low: "Low",
-  close: "Close",
-  volume: "Volume",
-};
+// CSVカラムマッピング候補（ヘッダーを見て自動選択）
+function detectColMap(csvText: string) {
+  const firstLine = csvText.split("\n")[0];
+  const delimiter = firstLine.includes("\t") ? "\t" : ",";
+  const headers = firstLine.split(delimiter).map((h) => h.trim().toLowerCase().replace(/"/g, ""));
+
+  const find = (...candidates: string[]) =>
+    candidates.find((c) => headers.includes(c)) ?? candidates[0];
+
+  return {
+    time: find("time", "date", "datetime", "timestamp"),
+    open: find("open"),
+    high: find("high"),
+    low: find("low"),
+    close: find("close"),
+    volume: headers.includes("volume") ? "volume" : undefined,
+  };
+}
 
 interface Props {
   trade: ReconstructedTrade;
@@ -101,7 +110,8 @@ export function TradeChart({ trade }: Props) {
   // CSVファイルを読み込んでトレードに紐付けて保存
   const handleCsvUpload = useCallback(async (file: File) => {
     const text = await file.text();
-    const { bars, errors } = parseCsv(text, DEFAULT_COL_MAP);
+    const colMap = detectColMap(text);
+    const { bars, errors } = parseCsv(text, colMap);
 
     if (errors.length > 0 && bars.length === 0) {
       toast.error(`CSVエラー: ${errors[0]}`);
