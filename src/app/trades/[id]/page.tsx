@@ -9,25 +9,20 @@ import { TradeChart } from "@/components/chart/TradeChart";
 import { TradeEditModal } from "@/components/trade/TradeEditModal";
 import { EditIcon, Trash2Icon, ChevronLeftIcon } from "lucide-react";
 import clsx from "clsx";
-import type { OhlcBar } from "@/types";
+
 import toast from "react-hot-toast";
 
 export default function TradeDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { reconstructedTrades, tradeGroups, deleteTrade, getOhlcForPair } = useAppStore();
+  const { reconstructedTrades, tradeGroups, deleteTrade } = useAppStore();
 
   const trade = reconstructedTrades.find((t) => t.id === id);
   const tradeGroup = tradeGroups.find((tg) => tg.id === id);
   const [editOpen, setEditOpen] = useState(false);
-  const [bars1m, setBars1m] = useState<OhlcBar[]>([]);
+  
 
-  useEffect(() => {
-    if (trade) {
-      const b = getOhlcForPair(trade.pair, "1m");
-      setBars1m(b);
-    }
-  }, [trade, getOhlcForPair]);
+  
 
   if (!trade || !tradeGroup) {
     return (
