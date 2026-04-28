@@ -2,11 +2,12 @@
 // src/components/chart/TradeChart.tsx
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { OhlcBar, ReconstructedTrade, Timeframe } from "@/types";
-import { aggregateBars, TIMEFRAME_MINUTES } from "@/lib/utils/ohlc";
+import { aggregateBars, TIMEFRAME_MINUTES, parseCsv } from "@/lib/utils/ohlc";
 import { fetchOhlcFromTwelveData, getDateRangeForTrade } from "@/lib/utils/twelvedata";
 import { saveOhlcBars, getOhlcBarsByTradeId, hasOhlcDataForTrade } from "@/lib/db";
 import clsx from "clsx";
-import { RefreshCwIcon } from "lucide-react";
+import { RefreshCwIcon, UploadIcon } from "lucide-react";
+import toast from "react-hot-toast";
 
 const TIMEFRAMES: Timeframe[] = ["1m", "5m", "10m", "15m", "30m", "1h", "4h"];
 const JST_OFFSET = 9 * 60 * 60;
@@ -14,6 +15,16 @@ const JST_OFFSET = 9 * 60 * 60;
 function toJstBars(bars: OhlcBar[]): OhlcBar[] {
   return bars.map((b) => ({ ...b, time: b.time + JST_OFFSET }));
 }
+
+// デフォルトのCSVカラムマッピング（MT4形式）
+const DEFAULT_COL_MAP = {
+  time: "Date",
+  open: "Open",
+  high: "High",
+  low: "Low",
+  close: "Close",
+  volume: "Volume",
+};
 
 interface Props {
   trade: ReconstructedTrade;
@@ -28,7 +39,9 @@ export function TradeChart({ trade }: Props) {
   const [bars1m, setBars1m] = useState<OhlcBar[]>([]);
   const [fetching, setFetching] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [showCsvUpload, setShowCsvUpload] = useState(false);
 
+  // OHLCをトレードIDで読み込み、なければAPIで取得
   const loadOhlc = useCallback(async (forceRefresh = false) => {
     setFetching(true);
     setFetchError(null);
@@ -47,7 +60,7 @@ export function TradeChart({ trade }: Props) {
         }
       }
 
-      // APIから取得（トレード日時の前後3日）
+      // APIから取得を試みる
       const { startDate, endDate } = getDateRangeForTrade(trade.firstEntryDatetime);
       const { bars, error } = await fetchOhlcFromTwelveData({
         symbol: trade.pair,
@@ -59,19 +72,53 @@ export function TradeChart({ trade }: Props) {
 
       if (error) {
         setFetchError(error);
+        setShowCsvUpload(true);
       } else if (bars.length > 0) {
-        setBars1m(bars);
-        // トレードIDと紐付けて保存
-        await saveOhlcBars(trade.pair, "1m", bars, trade.id);
+        // エントリー時刻のデータが含まれているか確認
+        const entryTs = Math.floor(new Date(trade.firstEntryDatetime).getTime() / 1000);
+        const hasEntryData = bars.some(
+          (b) => Math.abs(b.time - entryTs) < 60 * 60 * 24 // 1日以内
+        );
+        if (!hasEntryData) {
+          setFetchError("APIでこの日付のデータを取得できませんでした。CSVから取り込んでください。");
+          setShowCsvUpload(true);
+        } else {
+          setBars1m(bars);
+          await saveOhlcBars(trade.pair, "1m", bars, trade.id);
+        }
       } else {
-        setFetchError("データが取得できませんでした");
+        setFetchError("データが取得できませんでした。CSVから取り込んでください。");
+        setShowCsvUpload(true);
       }
     } catch {
       setFetchError("取得エラー");
+      setShowCsvUpload(true);
     } finally {
       setFetching(false);
     }
   }, [trade.id, trade.pair, trade.firstEntryDatetime]);
+
+  // CSVファイルを読み込んでトレードに紐付けて保存
+  const handleCsvUpload = useCallback(async (file: File) => {
+    const text = await file.text();
+    const { bars, errors } = parseCsv(text, DEFAULT_COL_MAP);
+
+    if (errors.length > 0 && bars.length === 0) {
+      toast.error(`CSVエラー: ${errors[0]}`);
+      return;
+    }
+
+    if (bars.length === 0) {
+      toast.error("CSVからデータを読み込めませんでした");
+      return;
+    }
+
+    setBars1m(bars);
+    await saveOhlcBars(trade.pair, "1m", bars, trade.id);
+    setShowCsvUpload(false);
+    setFetchError(null);
+    toast.success(`${bars.length}件のOHLCデータを保存しました`);
+  }, [trade.pair, trade.id]);
 
   useEffect(() => {
     loadOhlc();
@@ -92,11 +139,7 @@ export function TradeChart({ trade }: Props) {
         layout: { background: { color: "#0a0a0f" }, textColor: "#8888aa" },
         grid: { vertLines: { color: "#1a1a24" }, horzLines: { color: "#1a1a24" } },
         rightPriceScale: { borderColor: "#1e1e2e" },
-        timeScale: {
-          borderColor: "#1e1e2e",
-          timeVisible: true,
-          secondsVisible: false,
-        },
+        timeScale: { borderColor: "#1e1e2e", timeVisible: true, secondsVisible: false },
       });
 
       const series = chart.addCandlestickSeries({
@@ -131,7 +174,7 @@ export function TradeChart({ trade }: Props) {
     };
   }, []);
 
-  // データ更新（JSTに変換）
+  // データ更新
   useEffect(() => {
     if (!ready || !seriesRef.current || bars1m.length === 0) return;
     try {
@@ -141,7 +184,7 @@ export function TradeChart({ trade }: Props) {
     } catch (e) { console.error("Chart data error:", e); }
   }, [ready, bars1m, tf]);
 
-  // マーカー＋エントリー位置へスクロール
+  // マーカー＋スクロール
   useEffect(() => {
     if (!ready || !seriesRef.current || bars1m.length === 0) return;
     try {
@@ -173,7 +216,6 @@ export function TradeChart({ trade }: Props) {
       markers.sort((a: any, b: any) => a.time - b.time);
       (seriesRef.current as any).setMarkers(markers);
 
-      // エントリー位置にスクロール
       if (chartRef.current) {
         const entryFills = trade.fills.filter((f) => f.type === "ENTRY");
         const exitFills = trade.fills.filter((f) => f.type === "EXIT");
@@ -196,7 +238,8 @@ export function TradeChart({ trade }: Props) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border-subtle bg-bg-secondary flex-shrink-0">
+      {/* Toolbar */}
+      <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border-subtle bg-bg-secondary flex-shrink-0 flex-wrap">
         {TIMEFRAMES.map((t) => (
           <button key={t} onClick={() => setTf(t)}
             className={clsx("px-2 py-0.5 text-xs rounded transition-colors",
@@ -205,21 +248,53 @@ export function TradeChart({ trade }: Props) {
           </button>
         ))}
         <div className="ml-auto flex items-center gap-2">
-          {fetchError && <span className="text-xs text-loss">{fetchError}</span>}
+          {/* CSVアップロードボタン */}
+          <label className="flex items-center gap-1 text-xs text-text-muted hover:text-text-primary cursor-pointer transition-colors">
+            <UploadIcon size={12} />
+            CSV
+            <input
+              type="file"
+              accept=".csv,.txt"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleCsvUpload(file);
+                e.target.value = "";
+              }}
+            />
+          </label>
           <button onClick={() => loadOhlc(true)} disabled={fetching}
             className="flex items-center gap-1 text-xs text-text-muted hover:text-text-primary transition-colors">
             <RefreshCwIcon size={12} className={fetching ? "animate-spin" : ""} />
-            {fetching ? "取得中..." : "更新"}
+            {fetching ? "取得中..." : "API更新"}
           </button>
         </div>
       </div>
+
+      {/* Chart */}
       <div ref={containerRef} className="flex-1 relative">
         {bars1m.length === 0 && !fetching && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-text-muted text-sm">
-            <span>OHLCデータなし</span>
-            <button onClick={() => loadOhlc(true)} className="text-xs text-accent-blue hover:underline">
-              データを取得する
-            </button>
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-text-muted text-sm p-4">
+            {fetchError && <p className="text-xs text-loss text-center">{fetchError}</p>}
+            <div className="flex flex-col items-center gap-2">
+              <label className="flex items-center gap-2 btn-secondary cursor-pointer text-xs">
+                <UploadIcon size={14} />
+                CSVをアップロード
+                <input
+                  type="file"
+                  accept=".csv,.txt"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleCsvUpload(file);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              <button onClick={() => loadOhlc(true)} className="text-xs text-accent-blue hover:underline">
+                APIから再取得する
+              </button>
+            </div>
           </div>
         )}
         {fetching && bars1m.length === 0 && (
