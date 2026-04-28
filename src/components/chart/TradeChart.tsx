@@ -3,69 +3,88 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { OhlcBar, ReconstructedTrade, Timeframe } from "@/types";
 import { aggregateBars, TIMEFRAME_MINUTES } from "@/lib/utils/ohlc";
-import { fetchOhlcFromTwelveData, isOhlcCacheValid, markOhlcCacheTime } from "@/lib/utils/twelvedata";
-import { useAppStore } from "@/store";
+import { fetchOhlcFromTwelveData, getDateRangeForTrade } from "@/lib/utils/twelvedata";
+import { saveOhlcBars, getOhlcBars, hasOhlcData } from "@/lib/db";
 import clsx from "clsx";
 import { RefreshCwIcon } from "lucide-react";
 
 const TIMEFRAMES: Timeframe[] = ["1m", "5m", "10m", "15m", "30m", "1h", "4h"];
 
 interface Props {
-  bars1m: OhlcBar[];
   trade?: ReconstructedTrade;
   pair?: string;
 }
 
-export function TradeChart({ bars1m: initialBars1m, trade, pair }: Props) {
+export function TradeChart({ trade, pair }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<unknown>(null);
   const seriesRef = useRef<unknown>(null);
   const [tf, setTf] = useState<Timeframe>("5m");
   const [ready, setReady] = useState(false);
-  const [bars1m, setBars1m] = useState<OhlcBar[]>(initialBars1m);
+  const [bars1m, setBars1m] = useState<OhlcBar[]>([]);
   const [fetching, setFetching] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
-  const saveOhlc = useAppStore((s) => s.saveOhlc);
 
-  // 自動取得
-  const fetchOhlc = useCallback(async (forceRefresh = false) => {
-    const targetPair = pair ?? trade?.pair;
+  const targetPair = pair ?? trade?.pair;
+
+  const loadOhlc = useCallback(async (forceRefresh = false) => {
     if (!targetPair) return;
-    if (!forceRefresh && isOhlcCacheValid(targetPair) && bars1m.length > 0) return;
-
     setFetching(true);
     setFetchError(null);
+
     try {
+      // トレード日時から前後3日の範囲を計算
+      const tradeDatetime = trade?.firstEntryDatetime ?? new Date().toISOString();
+      const { startDate, endDate } = getDateRangeForTrade(tradeDatetime);
+      const startTime = Math.floor(new Date(startDate).getTime() / 1000);
+      const endTime = Math.floor(new Date(endDate).getTime() / 1000) + 86400;
+
+      // すでにDBにデータがあればそれを使う
+      if (!forceRefresh) {
+        const hasData = await hasOhlcData(targetPair, "1m", startTime, endTime);
+        if (hasData) {
+          const stored = await getOhlcBars(targetPair, "1m", startTime, endTime);
+          if (stored.length > 0) {
+            setBars1m(stored);
+            setFetching(false);
+            return;
+          }
+        }
+      }
+
+      // APIから取得
       const { bars, error } = await fetchOhlcFromTwelveData({
         symbol: targetPair,
         timeframe: "1m",
-        outputSize: 500,
+        outputSize: 5000,
+        startDate,
+        endDate,
       });
+
       if (error) {
         setFetchError(error);
       } else if (bars.length > 0) {
         setBars1m(bars);
-        await saveOhlc(targetPair, bars);
-        markOhlcCacheTime(targetPair);
+        // Supabaseに保存
+        await saveOhlcBars(targetPair, "1m", bars);
+      } else {
+        setFetchError("データが取得できませんでした");
       }
+    } catch (e) {
+      setFetchError("取得エラー");
     } finally {
       setFetching(false);
     }
-  }, [pair, trade?.pair, bars1m.length, saveOhlc]);
+  }, [targetPair, trade?.firstEntryDatetime]);
 
-  // 初回マウント時に自動取得
+  // 初回マウント時に自動ロード
   useEffect(() => {
-    if (initialBars1m.length > 0) {
-      setBars1m(initialBars1m);
-    } else {
-      fetchOhlc();
-    }
-  }, [initialBars1m]);
+    loadOhlc();
+  }, [loadOhlc]);
 
   // チャート初期化
   useEffect(() => {
     if (!containerRef.current) return;
-
     (async () => {
       const LWC = await import("lightweight-charts");
       const createChart = (LWC as any).createChart;
@@ -75,29 +94,16 @@ export function TradeChart({ bars1m: initialBars1m, trade, pair }: Props) {
       const chart = createChart(container, {
         width: container.clientWidth,
         height: container.clientHeight,
-        layout: {
-          background: { color: "#0a0a0f" },
-          textColor: "#8888aa",
-        },
-        grid: {
-          vertLines: { color: "#1a1a24" },
-          horzLines: { color: "#1a1a24" },
-        },
+        layout: { background: { color: "#0a0a0f" }, textColor: "#8888aa" },
+        grid: { vertLines: { color: "#1a1a24" }, horzLines: { color: "#1a1a24" } },
         rightPriceScale: { borderColor: "#1e1e2e" },
-        timeScale: {
-          borderColor: "#1e1e2e",
-          timeVisible: true,
-          secondsVisible: false,
-        },
+        timeScale: { borderColor: "#1e1e2e", timeVisible: true, secondsVisible: false },
       });
 
       const series = chart.addCandlestickSeries({
-        upColor: "#22c55e",
-        downColor: "#ef4444",
-        borderUpColor: "#22c55e",
-        borderDownColor: "#ef4444",
-        wickUpColor: "#22c55e",
-        wickDownColor: "#ef4444",
+        upColor: "#22c55e", downColor: "#ef4444",
+        borderUpColor: "#22c55e", borderDownColor: "#ef4444",
+        wickUpColor: "#22c55e", wickDownColor: "#ef4444",
       });
 
       chartRef.current = chart;
@@ -132,20 +138,15 @@ export function TradeChart({ bars1m: initialBars1m, trade, pair }: Props) {
     try {
       const bars = aggregateBars(bars1m, tf);
       (seriesRef.current as any).setData(bars);
-      if (chartRef.current) {
-        (chartRef.current as any).timeScale().fitContent();
-      }
-    } catch (e) {
-      console.error("Chart data error:", e);
-    }
+      if (chartRef.current) (chartRef.current as any).timeScale().fitContent();
+    } catch (e) { console.error("Chart data error:", e); }
   }, [ready, bars1m, tf]);
 
   // マーカー
   useEffect(() => {
     if (!ready || !seriesRef.current || !trade) return;
     try {
-      const tfMinutes = TIMEFRAME_MINUTES[tf];
-      const tfSeconds = tfMinutes * 60;
+      const tfSeconds = TIMEFRAME_MINUTES[tf] * 60;
       const markers: unknown[] = [];
 
       for (const fill of trade.fills) {
@@ -157,8 +158,7 @@ export function TradeChart({ bars1m: initialBars1m, trade, pair }: Props) {
             position: trade.direction === "BUY" ? "belowBar" : "aboveBar",
             color: "#3b82f6",
             shape: trade.direction === "BUY" ? "arrowUp" : "arrowDown",
-            text: `E ${fill.price}`,
-            size: 1,
+            text: `E ${fill.price}`, size: 1,
           });
         } else {
           markers.push({
@@ -166,8 +166,7 @@ export function TradeChart({ bars1m: initialBars1m, trade, pair }: Props) {
             position: trade.direction === "BUY" ? "aboveBar" : "belowBar",
             color: trade.totalPnlPips >= 0 ? "#22c55e" : "#ef4444",
             shape: trade.direction === "BUY" ? "arrowDown" : "arrowUp",
-            text: `X ${fill.price}`,
-            size: 1,
+            text: `X ${fill.price}`, size: 1,
           });
         }
       }
@@ -190,57 +189,37 @@ export function TradeChart({ bars1m: initialBars1m, trade, pair }: Props) {
           } catch {}
         }
       }
-    } catch (e) {
-      console.error("Chart marker error:", e);
-    }
+    } catch (e) { console.error("Chart marker error:", e); }
   }, [ready, trade, tf, bars1m]);
-
-  const targetPair = pair ?? trade?.pair;
 
   return (
     <div className="flex flex-col h-full">
-      {/* Toolbar */}
       <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border-subtle bg-bg-secondary flex-shrink-0">
         {TIMEFRAMES.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTf(t)}
-            className={clsx(
-              "px-2 py-0.5 text-xs rounded transition-colors",
-              tf === t ? "bg-accent-blue/20 text-accent-blue" : "text-text-muted hover:text-text-secondary"
-            )}
-          >
+          <button key={t} onClick={() => setTf(t)}
+            className={clsx("px-2 py-0.5 text-xs rounded transition-colors",
+              tf === t ? "bg-accent-blue/20 text-accent-blue" : "text-text-muted hover:text-text-secondary")}>
             {t}
           </button>
         ))}
         <div className="ml-auto flex items-center gap-2">
-          {fetchError && (
-            <span className="text-xs text-loss">{fetchError}</span>
-          )}
+          {fetchError && <span className="text-xs text-loss">{fetchError}</span>}
           {targetPair && (
-            <button
-              onClick={() => fetchOhlc(true)}
-              disabled={fetching}
+            <button onClick={() => loadOhlc(true)} disabled={fetching}
               className="flex items-center gap-1 text-xs text-text-muted hover:text-text-primary transition-colors"
-              title="OHLCを再取得"
-            >
+              title="再取得">
               <RefreshCwIcon size={12} className={fetching ? "animate-spin" : ""} />
               {fetching ? "取得中..." : "更新"}
             </button>
           )}
         </div>
       </div>
-
-      {/* Chart */}
       <div ref={containerRef} className="flex-1 relative">
         {bars1m.length === 0 && !fetching && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-text-muted text-sm">
             <span>OHLCデータなし</span>
             {targetPair && (
-              <button
-                onClick={() => fetchOhlc(true)}
-                className="text-xs text-accent-blue hover:underline"
-              >
+              <button onClick={() => loadOhlc(true)} className="text-xs text-accent-blue hover:underline">
                 {targetPair}のデータを取得する
               </button>
             )}

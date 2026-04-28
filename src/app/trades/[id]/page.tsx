@@ -78,7 +78,7 @@ export default function TradeDetailPage() {
 
       {/* Chart */}
       <div className="flex-shrink-0 h-64 md:h-80 border-b border-border-subtle">
-        <TradeChart bars1m={bars1m} trade={trade} />
+        <TradeChart trade={trade} />
       </div>
 
       {/* Info panels */}
