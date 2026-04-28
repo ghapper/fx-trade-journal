@@ -1,7 +1,7 @@
 "use client";
 // src/app/import/page.tsx
 import { useState, useCallback } from "react";
-import { useAppStore } from "@/store";
+import { saveOhlcBars } from "@/lib/db";
 import { parseCsv } from "@/lib/utils/ohlc";
 import type { OhlcBar, CsvColumnMap } from "@/types";
 import { UploadIcon, CheckCircleIcon, AlertCircleIcon } from "lucide-react";
@@ -24,7 +24,7 @@ const COLUMN_PRESETS = [
 ];
 
 export default function ImportPage() {
-  const { saveOhlc } = useAppStore();
+  
   const [csvText, setCsvText] = useState("");
   const [pair, setPair] = useState("USDJPY");
   const [colPreset, setColPreset] = useState(0);
@@ -77,7 +77,7 @@ export default function ImportPage() {
         toast.error("保存できるデータがありません");
         return;
       }
-      await saveOhlc(pair, bars);
+      await saveOhlcBars(pair, "1m", bars);
       toast.success(`${bars.length}件を保存しました (${pair})`);
     } catch (e) {
       toast.error("保存に失敗しました");
