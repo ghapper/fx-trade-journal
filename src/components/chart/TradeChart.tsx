@@ -159,10 +159,15 @@ export function TradeChart({ trade }: Props) {
       const chart = createChart(container, {
         width: container.clientWidth,
         height: container.clientHeight,
-        layout: { background: { color: chartColors.background }, textColor: "#aaaaaa" },
-        grid: { vertLines: { color: "#1a1a24" }, horzLines: { color: "#1a1a24" } },
-        rightPriceScale: { borderColor: "#1e1e2e" },
-        timeScale: { borderColor: "#1e1e2e", timeVisible: true, secondsVisible: false },
+        layout: { background: { color: chartColors.background }, textColor: "#ff6600" },
+        grid: { vertLines: { color: "#1a1a1a" }, horzLines: { color: "#1a1a1a" } },
+        crosshair: {
+          mode: 0, // 0 = Normal (自由に動く), 1 = Magnet (プライスに張り付く)
+          vertLine: { color: "#ff6600", style: 1, width: 1 },
+          horzLine: { color: "#ff6600", style: 1, width: 1 },
+        },
+        rightPriceScale: { borderColor: "#333333", textColor: "#ff6600" },
+        timeScale: { borderColor: "#333333", textColor: "#ff6600", timeVisible: true, secondsVisible: false },
       });
 
       const series = chart.addCandlestickSeries({

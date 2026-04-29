@@ -18,13 +18,14 @@ const config: Config = {
         },
         border: {
           subtle: "#1a1a1a",
-          default: "#222222",
+          default: "#2a2a2a",
           active: "#ff6600",
         },
         text: {
-          primary: "#ffffff",
-          secondary: "#aaaaaa",
-          muted: "#555555",
+          primary: "#ff6600",
+          secondary: "#cc5500",
+          muted: "#663300",
+          white: "#ffffff",
         },
         accent: {
           blue: "#ff6600",
@@ -32,11 +33,15 @@ const config: Config = {
           green: "#00ff41",
           red: "#ff3030",
           yellow: "#ffaa00",
-          purple: "#ff6600",
           orange: "#ff6600",
         },
         profit: "#00ff41",
         loss: "#ff3030",
+        nav: {
+          bg: "#ff6600",
+          text: "#000000",
+          active: "#cc4400",
+        },
       },
       fontFamily: {
         sans: ["'JetBrains Mono'", "monospace"],
