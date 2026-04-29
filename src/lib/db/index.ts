@@ -86,7 +86,8 @@ export async function getOhlcBarsByTradeId(tradeId: string): Promise<OhlcBar[]> 
     .select("time,open,high,low,close,volume")
     .eq("trade_id", tradeId)
     .eq("timeframe", "1m")
-    .order("time", { ascending: true });
+    .order("time", { ascending: true })
+    .limit(10000);
   if (error) return [];
   return (data ?? []).map((r) => ({
     time: r.time,
