@@ -5,23 +5,20 @@
 @tailwind utilities;
 
 :root {
-  --bg-primary: #0a0a0f;
-  --bg-secondary: #111118;
-  --bg-tertiary: #1a1a24;
-  --bg-card: #13131d;
-  --border-subtle: #1e1e2e;
-  --border-default: #2a2a3e;
-  --text-primary: #e8e8f0;
-  --text-secondary: #8888aa;
-  --accent-blue: #3b82f6;
-  --accent-cyan: #06b6d4;
-  --profit: #22c55e;
-  --loss: #ef4444;
+  --bg-primary: #000000;
+  --bg-secondary: #0a0a0a;
+  --bg-tertiary: #111111;
+  --bg-card: #0d0d0d;
+  --border-subtle: #1a1a1a;
+  --border-default: #222222;
+  --text-primary: #ffffff;
+  --text-secondary: #aaaaaa;
+  --accent-orange: #ff6600;
+  --profit: #00ff41;
+  --loss: #ff3030;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 html, body {
   background: var(--bg-primary);
@@ -31,13 +28,11 @@ html, body {
   overscroll-behavior: none;
 }
 
-/* Custom scrollbar */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: var(--border-active, #3a3a5e); }
+::-webkit-scrollbar-thumb { background: #222222; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #ff6600; }
 
-/* Remove number input arrows */
 input[type=number]::-webkit-inner-spin-button,
 input[type=number]::-webkit-outer-spin-button {
   -webkit-appearance: none;
@@ -46,7 +41,7 @@ input[type=number]::-webkit-outer-spin-button {
 
 @layer components {
   .btn-primary {
-    @apply bg-accent-blue hover:bg-blue-500 text-white px-4 py-2 rounded text-sm font-medium transition-colors;
+    @apply bg-accent-orange hover:bg-orange-500 text-white px-4 py-2 rounded text-sm font-medium transition-colors;
   }
   .btn-secondary {
     @apply bg-bg-tertiary hover:bg-bg-hover border border-border-default text-text-primary px-4 py-2 rounded text-sm transition-colors;
@@ -55,19 +50,19 @@ input[type=number]::-webkit-outer-spin-button {
     @apply bg-loss/20 hover:bg-loss/30 border border-loss/30 text-loss px-4 py-2 rounded text-sm transition-colors;
   }
   .card {
-    @apply bg-bg-card border border-border-subtle rounded-lg;
+    @apply bg-bg-card border border-border-subtle rounded;
   }
   .input-field {
-    @apply bg-bg-tertiary border border-border-default text-text-primary rounded px-3 py-2 text-sm w-full focus:outline-none focus:border-accent-blue transition-colors;
+    @apply bg-bg-tertiary border border-border-default text-text-primary rounded px-3 py-2 text-sm w-full focus:outline-none focus:border-accent-orange transition-colors;
   }
   .label {
     @apply text-text-secondary text-xs mb-1 block;
   }
   .badge {
-    @apply text-xs px-2 py-0.5 rounded-full border;
+    @apply text-xs px-2 py-0.5 rounded border;
   }
   .badge-buy {
-    @apply badge bg-accent-blue/10 border-accent-blue/30 text-accent-blue;
+    @apply badge bg-profit/10 border-profit/30 text-profit;
   }
   .badge-sell {
     @apply badge bg-loss/10 border-loss/30 text-loss;

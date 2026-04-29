@@ -88,6 +88,16 @@ export interface CsvColumnMap {
   volume?: string;
 }
 
+export interface ChartColors {
+  upColor: string;
+  downColor: string;
+  borderUpColor: string;
+  borderDownColor: string;
+  wickUpColor: string;
+  wickDownColor: string;
+  background: string;
+}
+
 export interface AppSettings {
   defaultPair: string;
   defaultLots: number;
@@ -95,6 +105,7 @@ export interface AppSettings {
   entryReasonPresets: string[];
   exitReasonPresets: string[];
   marketPremisePresets: string[];
+  chartColors: ChartColors;
 }
 
 export interface DailyStats {

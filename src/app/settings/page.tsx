@@ -132,6 +132,75 @@ export default function SettingsPage() {
         onAdd={(item) => addItem("marketPremisePresets", item)}
       />
 
+      {/* Chart Colors */}
+      <div className="card p-4 space-y-3">
+        <h2 className="text-sm font-bold">チャートカラー</h2>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label">陽線（上昇）</label>
+            <div className="flex gap-2 items-center">
+              <input
+                type="color"
+                className="w-10 h-8 rounded cursor-pointer bg-transparent border border-border-default"
+                value={form.chartColors?.upColor ?? "#00ff41"}
+                onChange={(e) => setForm({ ...form, chartColors: { ...(form.chartColors ?? {}), upColor: e.target.value, borderUpColor: e.target.value, wickUpColor: e.target.value } as typeof form.chartColors })}
+              />
+              <span className="text-xs text-text-secondary">{form.chartColors?.upColor ?? "#00ff41"}</span>
+            </div>
+          </div>
+          <div>
+            <label className="label">陰線（下落）</label>
+            <div className="flex gap-2 items-center">
+              <input
+                type="color"
+                className="w-10 h-8 rounded cursor-pointer bg-transparent border border-border-default"
+                value={form.chartColors?.downColor ?? "#ff3030"}
+                onChange={(e) => setForm({ ...form, chartColors: { ...(form.chartColors ?? {}), downColor: e.target.value, borderDownColor: e.target.value, wickDownColor: e.target.value } as typeof form.chartColors })}
+              />
+              <span className="text-xs text-text-secondary">{form.chartColors?.downColor ?? "#ff3030"}</span>
+            </div>
+          </div>
+          <div>
+            <label className="label">チャート背景</label>
+            <div className="flex gap-2 items-center">
+              <input
+                type="color"
+                className="w-10 h-8 rounded cursor-pointer bg-transparent border border-border-default"
+                value={form.chartColors?.background ?? "#000000"}
+                onChange={(e) => setForm({ ...form, chartColors: { ...(form.chartColors ?? {}), background: e.target.value } as typeof form.chartColors })}
+              />
+              <span className="text-xs text-text-secondary">{form.chartColors?.background ?? "#000000"}</span>
+            </div>
+          </div>
+          <div>
+            <label className="label">プリセット</label>
+            <div className="flex gap-1 flex-wrap">
+              {[
+                { label: "Bloomberg", up: "#00ff41", down: "#ff3030", bg: "#000000" },
+                { label: "TradingView", up: "#26a69a", down: "#ef5350", bg: "#131722" },
+                { label: "白背景", up: "#26a69a", down: "#ef5350", bg: "#ffffff" },
+              ].map((preset) => (
+                <button
+                  key={preset.label}
+                  onClick={() => setForm({
+                    ...form,
+                    chartColors: {
+                      upColor: preset.up, downColor: preset.down,
+                      borderUpColor: preset.up, borderDownColor: preset.down,
+                      wickUpColor: preset.up, wickDownColor: preset.down,
+                      background: preset.bg,
+                    }
+                  })}
+                  className="text-xs px-2 py-1 rounded border border-border-default text-text-secondary hover:text-text-primary hover:border-border-active transition-colors"
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
       <button onClick={handleSave} disabled={saving} className="btn-primary w-full py-3">
         {saving ? "保存中..." : "設定を保存"}
       </button>

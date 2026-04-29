@@ -5,6 +5,7 @@ import type { OhlcBar, ReconstructedTrade, Timeframe } from "@/types";
 import { aggregateBars, TIMEFRAME_MINUTES, parseCsv } from "@/lib/utils/ohlc";
 import { fetchOhlcFromTwelveData, getDateRangeForTrade } from "@/lib/utils/twelvedata";
 import { saveOhlcBars, getOhlcBarsByTradeId, hasOhlcDataForTrade } from "@/lib/db";
+import { useAppStore } from "@/store";
 import clsx from "clsx";
 import { RefreshCwIcon, UploadIcon } from "lucide-react";
 import toast from "react-hot-toast";
@@ -40,6 +41,16 @@ interface Props {
 }
 
 export function TradeChart({ trade }: Props) {
+  const settings = useAppStore((s) => s.settings);
+  const chartColors = settings?.chartColors ?? {
+    upColor: "#00ff41",
+    downColor: "#ff3030",
+    borderUpColor: "#00ff41",
+    borderDownColor: "#ff3030",
+    wickUpColor: "#00ff41",
+    wickDownColor: "#ff3030",
+    background: "#000000",
+  };
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<unknown>(null);
   const seriesRef = useRef<unknown>(null);
@@ -148,16 +159,19 @@ export function TradeChart({ trade }: Props) {
       const chart = createChart(container, {
         width: container.clientWidth,
         height: container.clientHeight,
-        layout: { background: { color: "#0a0a0f" }, textColor: "#8888aa" },
+        layout: { background: { color: chartColors.background }, textColor: "#aaaaaa" },
         grid: { vertLines: { color: "#1a1a24" }, horzLines: { color: "#1a1a24" } },
         rightPriceScale: { borderColor: "#1e1e2e" },
         timeScale: { borderColor: "#1e1e2e", timeVisible: true, secondsVisible: false },
       });
 
       const series = chart.addCandlestickSeries({
-        upColor: "#22c55e", downColor: "#ef4444",
-        borderUpColor: "#22c55e", borderDownColor: "#ef4444",
-        wickUpColor: "#22c55e", wickDownColor: "#ef4444",
+        upColor: chartColors.upColor,
+        downColor: chartColors.downColor,
+        borderUpColor: chartColors.borderUpColor,
+        borderDownColor: chartColors.borderDownColor,
+        wickUpColor: chartColors.wickUpColor,
+        wickDownColor: chartColors.wickDownColor,
       });
 
       chartRef.current = chart;

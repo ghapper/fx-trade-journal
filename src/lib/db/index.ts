@@ -181,6 +181,15 @@ const DEFAULT_SETTINGS: AppSettings = {
     "上昇トレンド", "下降トレンド", "レンジ", "ドル高", "ドル安",
     "リスクオン", "リスクオフ", "指標待ち", "方向感なし",
   ],
+  chartColors: {
+    upColor: "#00ff41",
+    downColor: "#ff3030",
+    borderUpColor: "#00ff41",
+    borderDownColor: "#ff3030",
+    wickUpColor: "#00ff41",
+    wickDownColor: "#ff3030",
+    background: "#000000",
+  },
 };
 
 export async function getSettings(): Promise<AppSettings> {
