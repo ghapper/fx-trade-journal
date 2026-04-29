@@ -59,8 +59,10 @@ export function TradeChart({ trade }: Props) {
       // まずトレードIDで保存済みデータを確認
       if (!forceRefresh) {
         const hasData = await hasOhlcDataForTrade(trade.id);
+        console.log("[TradeChart] hasOhlcDataForTrade:", trade.id, hasData);
         if (hasData) {
           const stored = await getOhlcBarsByTradeId(trade.id);
+          console.log("[TradeChart] stored bars:", stored.length);
           if (stored.length > 0) {
             setBars1m(stored);
             setFetching(false);
