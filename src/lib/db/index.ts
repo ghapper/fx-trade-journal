@@ -81,22 +81,35 @@ export async function saveOhlcBars(
 }
 
 export async function getOhlcBarsByTradeId(tradeId: string): Promise<OhlcBar[]> {
-  const { data, error } = await supabase
-    .from("ohlc_data")
-    .select("time,open,high,low,close,volume")
-    .eq("trade_id", tradeId)
-    .eq("timeframe", "1m")
-    .order("time", { ascending: true })
-    .limit(10000);
-  if (error) return [];
-  return (data ?? []).map((r) => ({
-    time: r.time,
-    open: r.open,
-    high: r.high,
-    low: r.low,
-    close: r.close,
-    volume: r.volume ?? undefined,
-  }));
+  const allData: OhlcBar[] = [];
+  const pageSize = 1000;
+  let page = 0;
+
+  while (true) {
+    const { data, error } = await supabase
+      .from("ohlc_data")
+      .select("time,open,high,low,close,volume")
+      .eq("trade_id", tradeId)
+      .eq("timeframe", "1m")
+      .order("time", { ascending: true })
+      .range(page * pageSize, (page + 1) * pageSize - 1);
+
+    if (error || !data || data.length === 0) break;
+
+    allData.push(...data.map((r) => ({
+      time: r.time,
+      open: r.open,
+      high: r.high,
+      low: r.low,
+      close: r.close,
+      volume: r.volume ?? undefined,
+    })));
+
+    if (data.length < pageSize) break;
+    page++;
+  }
+
+  return allData;
 }
 
 export async function hasOhlcDataForTrade(tradeId: string): Promise<boolean> {
