@@ -108,23 +108,37 @@ export default function ImportPage() {
 
   // ---- Trade history handlers ----
   const handleTradeFile = useCallback((file: File) => {
-    // まずShift-JISで試み、文字化けしていたらUTF-8で再試行
+    // Shift-JISで読み込む（文字化けが多ければUTF-8にフォールバック）
     const tryRead = (encoding: string) => {
       const reader = new FileReader();
       reader.onload = (e) => {
         const text = e.target?.result as string;
-        // 文字化けチェック（置換文字が多い場合はUTF-8で再試行）
-        const corruptCount = (text.match(/�/g) ?? []).length;
-        if (corruptCount > 5 && encoding === "UTF-8") {
-          tryRead("Shift-JIS");
+        // 文字化けチェック（U+FFFD 置換文字が多ければエンコーディングを切り替え）
+        const corruptCount = (text.match(/\uFFFD/g) ?? []).length;
+        if (corruptCount > 5 && encoding === "Shift-JIS") {
+          tryRead("UTF-8");
           return;
         }
         setTradeCsvText(text);
         const lines = text.trim().split("\n");
         if (lines.length > 0) {
           const delimiter = lines[0].includes("\t") ? "\t" : ",";
+          // \r\n 対応: 各セルから \r を除去
           const headers = lines[0].split(delimiter).map((h) => h.trim().replace(/"/g, "").replace(/\r/g, ""));
           setTradeHeaders(headers);
+
+          // ヘッダーと DEFAULT_TRADE_COL_MAP を照合して自動マッピング
+          const headerSet = new Set(headers);
+          const autoMap = { ...DEFAULT_TRADE_COL_MAP };
+          const colKeys: (keyof TradeHistoryColMap)[] = ["pair", "direction", "type", "lots", "price", "datetime"];
+          for (const key of colKeys) {
+            if (!headerSet.has(autoMap[key])) {
+              // デフォルト値がヘッダーにない場合、最初のヘッダーをセット
+              autoMap[key] = headers[0] ?? "";
+            }
+          }
+          setTradeColMap(autoMap);
+
           const preview = lines.slice(1, 6).map((line) =>
             line.split(delimiter).map((c) => c.trim().replace(/"/g, "").replace(/\r/g, ""))
           );
@@ -134,7 +148,8 @@ export default function ImportPage() {
       };
       reader.readAsText(file, encoding);
     };
-    tryRead("UTF-8");
+    // Shift-JISから試みる（引き継ぎメモ通り）
+    tryRead("Shift-JIS");
   }, []);
 
   const handleTradeImport = async () => {
@@ -145,7 +160,7 @@ export default function ImportPage() {
     try {
       const lines = tradeCsvText.trim().split("\n");
       const delimiter = lines[0].includes("\t") ? "\t" : ",";
-      const headers = lines[0].split(delimiter).map((h) => h.trim().replace(/"/g, ""));
+      const headers = lines[0].split(delimiter).map((h) => h.trim().replace(/"/g, "").replace(/\r/g, ""));
 
       const getIdx = (colName: string) => headers.indexOf(colName);
 
@@ -217,39 +232,44 @@ export default function ImportPage() {
         return;
       }
 
-      // ペア・方向ごとにグループ化してFIFOでマッチング
+      // ペアごとにグループ化（方向はエントリー側の方向を使用）
+      // ※決済行の売買方向はエントリーと逆になるため pair のみでグループ化
       const groups = new Map<string, Fill[]>();
       for (const fill of fills) {
-        const key = `${fill.pair}_${fill.direction}`;
+        const key = fill.pair;
         if (!groups.has(key)) groups.set(key, []);
         groups.get(key)!.push(fill);
       }
 
       let savedCount = 0;
       for (const [, groupFills] of groups) {
-        // エントリーとエグジットを時系列順にソート
+        // 時系列順にソート
         groupFills.sort((a, b) => new Date(a.datetime).getTime() - new Date(b.datetime).getTime());
 
-        // エントリーごとにトレードグループを作成
         const entryFills = groupFills.filter((f) => f.type === "ENTRY");
-        const exitFills = groupFills.filter((f) => f.type === "EXIT");
+        const exitFills  = groupFills.filter((f) => f.type === "EXIT");
 
-        // シンプルに1エントリー1エグジットでグループ化
+        // FIFOマッチング: 各エントリーに時系列で最も近い未使用エグジットを対応付ける
         const used = new Set<string>();
         for (const entry of entryFills) {
           const id = generateId();
           entry.tradeGroupId = id;
 
-          // 対応するエグジットを探す（未使用の最初のエグジット）
+          // 対応するエグジットを探す（エントリー後の未使用エグジットを時系列順に）
           const matchExit = exitFills.find(
             (ex) => !used.has(ex.id) &&
-            new Date(ex.datetime) > new Date(entry.datetime)
+            new Date(ex.datetime) >= new Date(entry.datetime)
           );
 
           const tgFills: Fill[] = [{ ...entry, tradeGroupId: id }];
           if (matchExit) {
             used.add(matchExit.id);
-            tgFills.push({ ...matchExit, tradeGroupId: id });
+            // エグジットのdirectionをエントリーの逆に正規化
+            tgFills.push({
+              ...matchExit,
+              tradeGroupId: id,
+              direction: entry.direction === "BUY" ? "SELL" : "BUY",
+            });
           }
 
           const tg: TradeGroup = {
