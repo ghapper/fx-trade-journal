@@ -220,7 +220,19 @@ export default function ImportPage() {
           direction,
           price,
           lots,
-          datetime: datetime.includes("T") ? datetime : datetime.replace(" ", "T") + (datetime.length === 16 ? ":00" : ""),
+          datetime: (() => {
+            // "2026/5/1 16:41" や "2026/05/01 16:41" などに対応
+            const dt = datetime.trim().replace(/\r/g, "");
+            if (dt.includes("T")) return dt;
+            // スラッシュ区切りの場合: 2026/5/1 16:41 → 2026-05-01T16:41:00
+            const m = dt.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+            if (m) {
+              const [, y, mo, d, h, min, sec] = m;
+              return `${y}-${mo.padStart(2,"0")}-${d.padStart(2,"0")}T${h.padStart(2,"0")}:${min}:${sec ?? "00"}`;
+            }
+            // スペース区切り: "2026-05-01 16:41"
+            return dt.replace(" ", "T") + (dt.length <= 16 ? ":00" : "");
+          })(),
           createdAt: new Date().toISOString(),
         });
       }
