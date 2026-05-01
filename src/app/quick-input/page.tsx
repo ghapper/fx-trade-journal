@@ -3,12 +3,36 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppStore } from "@/store";
-import type { Direction, Fill } from "@/types";
-import { generateId, CURRENCY_PAIRS } from "@/lib/utils";
-import type { TradeGroup } from "@/types";
+import type { Direction, Fill, TradeGroup } from "@/types";
+import { generateId } from "@/lib/utils";
 import clsx from "clsx";
 import toast from "react-hot-toast";
 import { XIcon, PlusIcon } from "lucide-react";
+
+type AssetClass = "forex" | "stock" | "crypto";
+
+const SYMBOLS: Record<AssetClass, string[]> = {
+  forex: [
+    "USDJPY", "EURUSD", "EURJPY", "GBPUSD", "GBPJPY",
+    "AUDUSD", "AUDJPY", "NZDUSD", "USDCHF", "USDCAD",
+    "CADJPY", "CHFJPY",
+  ],
+  stock: [
+    "AAPL", "NVDA", "TSLA", "GOOGL", "MSFT", "AMZN", "META",
+    "7203.T", "6758.T", "9984.T", "8306.T", "6861.T", "7974.T",
+    "SPY", "QQQ", "VIX",
+  ],
+  crypto: [
+    "BTC/USD", "ETH/USD", "XRP/USD", "SOL/USD", "ADA/USD",
+    "DOGE/USD", "MATIC/USD", "AVAX/USD", "BNB/USD", "LINK/USD",
+  ],
+};
+
+const ASSET_LABELS: Record<AssetClass, string> = {
+  forex: "FX",
+  stock: "株式",
+  crypto: "クリプト",
+};
 
 const QUICK_REASONS = [
   "押し目買い", "戻り売り", "ブレイクアウト", "反発",
@@ -33,7 +57,9 @@ export default function QuickInputPage() {
   const router = useRouter();
   const { saveTrade, settings } = useAppStore();
 
+  const [assetClass, setAssetClass] = useState<AssetClass>("forex");
   const [pair, setPair] = useState(settings?.defaultPair ?? "USDJPY");
+  const [customSymbol, setCustomSymbol] = useState("");
   const [direction, setDirection] = useState<Direction>("BUY");
   const [entryPrice, setEntryPrice] = useState("");
   const [entryDatetime, setEntryDatetime] = useState(nowLocal());
@@ -47,6 +73,14 @@ export default function QuickInputPage() {
   const [tags, setTags] = useState<string[]>([]);
   const [confidence, setConfidence] = useState(3);
   const [saving, setSaving] = useState(false);
+
+  const activePair = customSymbol || pair;
+
+  const handleAssetClassChange = (ac: AssetClass) => {
+    setAssetClass(ac);
+    setPair(SYMBOLS[ac][0]);
+    setCustomSymbol("");
+  };
 
   const toggleTag = (tag: string) => {
     setTags((prev) =>
@@ -73,7 +107,7 @@ export default function QuickInputPage() {
           id: generateId(),
           tradeGroupId: id,
           type: "ENTRY",
-          pair,
+          pair: activePair,
           direction,
           price: Number(entryPrice),
           lots: Number(lots),
@@ -87,7 +121,7 @@ export default function QuickInputPage() {
           id: generateId(),
           tradeGroupId: id,
           type: "EXIT",
-          pair,
+          pair: activePair,
           direction,
           price: Number(exitPrice),
           lots: Number(lots),
@@ -98,7 +132,7 @@ export default function QuickInputPage() {
 
       const tg: TradeGroup = {
         id,
-        pair,
+        pair: activePair,
         direction,
         createdAt: now,
         note: {
@@ -128,53 +162,82 @@ export default function QuickInputPage() {
 
   return (
     <div className="max-w-lg mx-auto px-4 py-4 space-y-4 pb-8">
-      <h1 className="font-bold text-sm text-text-secondary uppercase tracking-wider">
-        クイック入力
-      </h1>
+      <h1 className="font-bold text-sm uppercase tracking-wider">クイック入力</h1>
 
-      {/* Pair & direction */}
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className="label">通貨ペア</label>
-          <select
-            className="input-field"
-            value={pair}
-            onChange={(e) => setPair(e.target.value)}
+      {/* Asset class tabs */}
+      <div className="grid grid-cols-3 gap-1 bg-bg-tertiary rounded p-1">
+        {(["forex", "stock", "crypto"] as AssetClass[]).map((ac) => (
+          <button
+            key={ac}
+            onClick={() => handleAssetClassChange(ac)}
+            className={clsx(
+              "py-1.5 rounded text-xs font-bold transition-colors",
+              assetClass === ac
+                ? "bg-accent-orange text-black"
+                : "text-text-secondary hover:text-text-primary"
+            )}
           >
-            {CURRENCY_PAIRS.map((p) => (
-              <option key={p} value={p}>{p}</option>
-            ))}
-          </select>
+            {ASSET_LABELS[ac]}
+          </button>
+        ))}
+      </div>
+
+      {/* Symbol selection */}
+      <div className="space-y-2">
+        <label className="label">銘柄</label>
+        <div className="flex gap-1 flex-wrap">
+          {SYMBOLS[assetClass].map((s) => (
+            <button
+              key={s}
+              onClick={() => { setPair(s); setCustomSymbol(""); }}
+              className={clsx(
+                "text-xs px-2 py-1 rounded border transition-colors",
+                activePair === s && !customSymbol
+                  ? "bg-accent-orange/20 border-accent-orange text-accent-orange"
+                  : "border-border-default text-text-secondary hover:text-text-primary"
+              )}
+            >
+              {s}
+            </button>
+          ))}
         </div>
-        <div>
-          <label className="label">方向</label>
-          <div className="grid grid-cols-2 gap-1">
-            {(["BUY", "SELL"] as Direction[]).map((d) => (
-              <button
-                key={d}
-                onClick={() => setDirection(d)}
-                className={clsx(
-                  "py-2.5 rounded text-sm font-bold transition-colors",
-                  direction === d
-                    ? d === "BUY"
-                      ? "bg-accent-blue text-white"
-                      : "bg-loss text-white"
-                    : "bg-bg-tertiary text-text-secondary border border-border-default"
-                )}
-              >
-                {d}
-              </button>
-            ))}
-          </div>
+        <input
+          className="input-field text-sm"
+          placeholder="カスタム銘柄（例: 9984.T, BTC/USD）"
+          value={customSymbol}
+          onChange={(e) => setCustomSymbol(e.target.value.toUpperCase())}
+        />
+      </div>
+
+      {/* Direction */}
+      <div>
+        <label className="label">方向</label>
+        <div className="grid grid-cols-2 gap-1">
+          {(["BUY", "SELL"] as Direction[]).map((d) => (
+            <button
+              key={d}
+              onClick={() => setDirection(d)}
+              className={clsx(
+                "py-2.5 rounded text-sm font-bold transition-colors",
+                direction === d
+                  ? d === "BUY"
+                    ? "bg-profit text-black"
+                    : "bg-loss text-white"
+                  : "bg-bg-tertiary text-text-secondary border border-border-default"
+              )}
+            >
+              {d}
+            </button>
+          ))}
         </div>
       </div>
 
       {/* Entry */}
       <div className="card p-3 space-y-2">
-        <p className="text-xs text-accent-blue font-bold uppercase">Entry</p>
+        <p className="text-xs text-profit font-bold uppercase">Entry</p>
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="label">エントリー日時</label>
+            <label className="label">日時</label>
             <input
               type="datetime-local"
               className="input-field text-xs"
@@ -183,7 +246,7 @@ export default function QuickInputPage() {
             />
           </div>
           <div>
-            <label className="label">ロット</label>
+            <label className="label">ロット/数量</label>
             <input
               type="number"
               step="0.01"
@@ -199,7 +262,7 @@ export default function QuickInputPage() {
             type="number"
             step="0.001"
             className="input-field text-base"
-            placeholder="例: 155.320"
+            placeholder={assetClass === "crypto" ? "例: 65000" : assetClass === "stock" ? "例: 185.50" : "例: 155.320"}
             value={entryPrice}
             onChange={(e) => setEntryPrice(e.target.value)}
           />
@@ -220,9 +283,7 @@ export default function QuickInputPage() {
           {hasExit ? <XIcon size={12} /> : <PlusIcon size={12} />}
           {hasExit ? "エグジットを削除" : "エグジットを追加"}
         </button>
-        <span className="text-xs text-text-muted">
-          {hasExit ? "" : "後から追加可能"}
-        </span>
+        {!hasExit && <span className="text-xs text-text-muted">後から追加可能</span>}
       </div>
 
       {/* Exit */}
@@ -244,7 +305,6 @@ export default function QuickInputPage() {
               type="number"
               step="0.001"
               className="input-field text-base"
-              placeholder="例: 155.680"
               value={exitPrice}
               onChange={(e) => setExitPrice(e.target.value)}
             />
@@ -257,11 +317,8 @@ export default function QuickInputPage() {
         <label className="label">相場前提</label>
         <div className="flex gap-1 flex-wrap mb-1">
           {QUICK_MARKET.map((m) => (
-            <button
-              key={m}
-              onClick={() => appendReason(setMarketPremise, m)}
-              className="text-xs px-2 py-1 rounded bg-bg-tertiary border border-border-default text-text-secondary hover:text-text-primary active:bg-bg-hover transition-colors"
-            >
+            <button key={m} onClick={() => appendReason(setMarketPremise, m)}
+              className="text-xs px-2 py-1 rounded bg-bg-tertiary border border-border-default text-text-secondary hover:text-text-primary active:bg-bg-hover transition-colors">
               {m}
             </button>
           ))}
@@ -279,11 +336,8 @@ export default function QuickInputPage() {
         <label className="label">エントリー根拠</label>
         <div className="flex gap-1 flex-wrap mb-1">
           {QUICK_REASONS.map((r) => (
-            <button
-              key={r}
-              onClick={() => appendReason(setEntryReason, r)}
-              className="text-xs px-2 py-1 rounded bg-bg-tertiary border border-border-default text-text-secondary hover:text-text-primary active:bg-bg-hover transition-colors"
-            >
+            <button key={r} onClick={() => appendReason(setEntryReason, r)}
+              className="text-xs px-2 py-1 rounded bg-bg-tertiary border border-border-default text-text-secondary hover:text-text-primary active:bg-bg-hover transition-colors">
               {r}
             </button>
           ))}
@@ -302,11 +356,8 @@ export default function QuickInputPage() {
           <label className="label">決済根拠</label>
           <div className="flex gap-1 flex-wrap mb-1">
             {["TP到達", "SL到達", "時間切れ", "逆行", "トレンド転換", "手動決済"].map((r) => (
-              <button
-                key={r}
-                onClick={() => appendReason(setExitReason, r)}
-                className="text-xs px-2 py-1 rounded bg-bg-tertiary border border-border-default text-text-secondary hover:text-text-primary active:bg-bg-hover transition-colors"
-              >
+              <button key={r} onClick={() => appendReason(setExitReason, r)}
+                className="text-xs px-2 py-1 rounded bg-bg-tertiary border border-border-default text-text-secondary hover:text-text-primary active:bg-bg-hover transition-colors">
                 {r}
               </button>
             ))}
@@ -325,16 +376,13 @@ export default function QuickInputPage() {
         <label className="label">タグ</label>
         <div className="flex gap-1 flex-wrap">
           {QUICK_TAGS.map((tag) => (
-            <button
-              key={tag}
-              onClick={() => toggleTag(tag)}
+            <button key={tag} onClick={() => toggleTag(tag)}
               className={clsx(
                 "text-xs px-2 py-1 rounded border transition-colors",
                 tags.includes(tag)
-                  ? "bg-accent-blue/20 border-accent-blue/40 text-accent-blue"
+                  ? "bg-accent-orange/20 border-accent-orange text-accent-orange"
                   : "bg-bg-tertiary border-border-default text-text-secondary"
-              )}
-            >
+              )}>
               {tag}
             </button>
           ))}
@@ -346,14 +394,9 @@ export default function QuickInputPage() {
         <label className="label">自信度</label>
         <div className="flex gap-3">
           {[1, 2, 3, 4, 5].map((n) => (
-            <button
-              key={n}
-              onClick={() => setConfidence(n)}
-              className={clsx(
-                "text-2xl transition-opacity",
-                n <= confidence ? "opacity-100" : "opacity-25"
-              )}
-            >
+            <button key={n} onClick={() => setConfidence(n)}
+              className={clsx("text-2xl transition-opacity text-accent-orange",
+                n <= confidence ? "opacity-100" : "opacity-25")}>
               ★
             </button>
           ))}
@@ -366,7 +409,7 @@ export default function QuickInputPage() {
         disabled={saving}
         className="btn-primary w-full py-4 text-base font-bold"
       >
-        {saving ? "保存中..." : "保存する"}
+        {saving ? "保存中..." : `${activePair} ${direction} を保存する`}
       </button>
     </div>
   );

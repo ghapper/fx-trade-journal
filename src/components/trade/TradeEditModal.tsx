@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useAppStore } from "@/store";
 import type { TradeGroup, Fill, Direction } from "@/types";
-import { generateId, CURRENCY_PAIRS } from "@/lib/utils";
+import { generateId } from "@/lib/utils";
 import { XIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import clsx from "clsx";
 import toast from "react-hot-toast";
@@ -145,12 +145,13 @@ export function TradeEditModal({ tradeGroup, onClose, defaultPair = "USDJPY" }: 
         {/* Pair & direction */}
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="label">通貨ペア</label>
-            <select className="input-field" value={pair} onChange={(e) => setPair(e.target.value)}>
-              {CURRENCY_PAIRS.map((p) => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </select>
+            <label className="label">銘柄</label>
+            <input
+              className="input-field"
+              value={pair}
+              onChange={(e) => setPair(e.target.value.toUpperCase())}
+              placeholder="USDJPY, AAPL, BTC/USD..."
+            />
           </div>
           <div>
             <label className="label">売買</label>
