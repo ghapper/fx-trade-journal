@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import type { OhlcBar, ReconstructedTrade, Timeframe } from "@/types";
 import { aggregateBars, TIMEFRAME_MINUTES, parseCsv } from "@/lib/utils/ohlc";
 import { fetchOhlcFromTwelveData, getDateRangeForTrade } from "@/lib/utils/twelvedata";
-import { saveOhlcBars, getOhlcBarsByTradeId, hasOhlcDataForTrade } from "@/lib/db";
+import { saveOhlcBars, getOhlcBarsByTradeId, hasOhlcDataForTrade, getOhlcBarsByPairAndRange } from "@/lib/db";
 import { useAppStore } from "@/store";
 import clsx from "clsx";
 import { RefreshCwIcon, UploadIcon } from "lucide-react";
@@ -82,8 +82,22 @@ export function TradeChart({ trade }: Props) {
         }
       }
 
-      // APIから取得を試みる
+      // 同じペア・同じ日付範囲の既存OHLCを確認（他トレードから流用）
       const { startDate, endDate } = getDateRangeForTrade(trade.firstEntryDatetime);
+      const startTime = Math.floor(new Date(startDate).getTime() / 1000);
+      const endTime = Math.floor(new Date(endDate).getTime() / 1000) + 86400;
+
+      const existingBars = await getOhlcBarsByPairAndRange(trade.pair, startTime, endTime);
+      if (existingBars.length > 0) {
+        console.log("[TradeChart] reusing existing OHLC:", existingBars.length, "bars");
+        setBars1m(existingBars);
+        // このトレードIDでも保存して次回から直接取得できるようにする
+        await saveOhlcBars(trade.pair, "1m", existingBars, trade.id);
+        setFetching(false);
+        return;
+      }
+
+      // APIから取得を試みる
       const { bars, error } = await fetchOhlcFromTwelveData({
         symbol: trade.pair,
         timeframe: "1m",
@@ -96,10 +110,9 @@ export function TradeChart({ trade }: Props) {
         setFetchError(error);
         setShowCsvUpload(true);
       } else if (bars.length > 0) {
-        // エントリー時刻のデータが含まれているか確認
         const entryTs = Math.floor(new Date(trade.firstEntryDatetime).getTime() / 1000);
         const hasEntryData = bars.some(
-          (b) => Math.abs(b.time - entryTs) < 60 * 60 * 24 // 1日以内
+          (b) => Math.abs(b.time - entryTs) < 60 * 60 * 24
         );
         if (!hasEntryData) {
           setFetchError("APIでこの日付のデータを取得できませんでした。CSVから取り込んでください。");
