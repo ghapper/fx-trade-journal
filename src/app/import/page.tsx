@@ -181,6 +181,13 @@ export default function ImportPage() {
       const priceIdx = getIdx(tradeColMap.price);
       const datetimeIdx = getIdx(tradeColMap.datetime);
 
+      // デバッグ: インデックス確認
+      console.log("=== CSV Import Debug ===");
+      console.log("headers:", headers);
+      console.log("tradeColMap:", tradeColMap);
+      console.log("indices:", { pairIdx, dirIdx, typeIdx, lotsIdx, priceIdx, datetimeIdx });
+      console.log("line2 cols:", lines[1]?.split(delimiter).map((c) => c.trim().replace(/"/g, "").replace(/\r/g, "")));
+
       if ([pairIdx, dirIdx, typeIdx, lotsIdx, priceIdx, datetimeIdx].includes(-1)) {
         const missing = [
           pairIdx === -1 ? tradeColMap.pair : null,
