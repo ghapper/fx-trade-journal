@@ -108,24 +108,33 @@ export default function ImportPage() {
 
   // ---- Trade history handlers ----
   const handleTradeFile = useCallback((file: File) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      setTradeCsvText(text);
-      const lines = text.trim().split("\n");
-      if (lines.length > 0) {
-        const delimiter = lines[0].includes("\t") ? "\t" : ",";
-        const headers = lines[0].split(delimiter).map((h) => h.trim().replace(/"/g, ""));
-        setTradeHeaders(headers);
-        // プレビュー（先頭5行）
-        const preview = lines.slice(1, 6).map((line) =>
-          line.split(delimiter).map((c) => c.trim().replace(/"/g, ""))
-        );
-        setTradePreview(preview);
-      }
-      setTradeErrors([]);
+    // まずShift-JISで試み、文字化けしていたらUTF-8で再試行
+    const tryRead = (encoding: string) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target?.result as string;
+        // 文字化けチェック（置換文字が多い場合はUTF-8で再試行）
+        const corruptCount = (text.match(/�/g) ?? []).length;
+        if (corruptCount > 5 && encoding === "UTF-8") {
+          tryRead("Shift-JIS");
+          return;
+        }
+        setTradeCsvText(text);
+        const lines = text.trim().split("\n");
+        if (lines.length > 0) {
+          const delimiter = lines[0].includes("\t") ? "\t" : ",";
+          const headers = lines[0].split(delimiter).map((h) => h.trim().replace(/"/g, "").replace(/\r/g, ""));
+          setTradeHeaders(headers);
+          const preview = lines.slice(1, 6).map((line) =>
+            line.split(delimiter).map((c) => c.trim().replace(/"/g, "").replace(/\r/g, ""))
+          );
+          setTradePreview(preview);
+        }
+        setTradeErrors([]);
+      };
+      reader.readAsText(file, encoding);
     };
-    reader.readAsText(file, "UTF-8");
+    tryRead("UTF-8");
   }, []);
 
   const handleTradeImport = async () => {
