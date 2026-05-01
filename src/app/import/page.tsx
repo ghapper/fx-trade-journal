@@ -108,48 +108,58 @@ export default function ImportPage() {
 
   // ---- Trade history handlers ----
   const handleTradeFile = useCallback((file: File) => {
-    // Shift-JISで読み込む（文字化けが多ければUTF-8にフォールバック）
+    // UTF-8(BOM付き含む) → Shift-JIS の順で試みる
+    const processText = (text: string) => {
+      // BOMを除去
+      const cleaned = text.startsWith("\uFEFF") ? text.slice(1) : text;
+      setTradeCsvText(cleaned);
+      const lines = cleaned.trim().split("\n");
+      if (lines.length > 0) {
+        const delimiter = lines[0].includes("\t") ? "\t" : ",";
+        // \r\n 対応: 各セルから \r を除去
+        const headers = lines[0].split(delimiter).map((h) => h.trim().replace(/"/g, "").replace(/\r/g, ""));
+        setTradeHeaders(headers);
+
+        // ヘッダーと DEFAULT_TRADE_COL_MAP を照合して自動マッピング
+        const headerSet = new Set(headers);
+        const autoMap = { ...DEFAULT_TRADE_COL_MAP };
+        const colKeys: (keyof TradeHistoryColMap)[] = ["pair", "direction", "type", "lots", "price", "datetime"];
+        for (const key of colKeys) {
+          if (!headerSet.has(autoMap[key])) {
+            autoMap[key] = headers[0] ?? "";
+          }
+        }
+        setTradeColMap(autoMap);
+
+        const preview = lines.slice(1, 6).map((line) =>
+          line.split(delimiter).map((c) => c.trim().replace(/"/g, "").replace(/\r/g, ""))
+        );
+        setTradePreview(preview);
+      }
+      setTradeErrors([]);
+    };
+
     const tryRead = (encoding: string) => {
       const reader = new FileReader();
       reader.onload = (e) => {
         const text = e.target?.result as string;
-        // 文字化けチェック（U+FFFD 置換文字が多ければエンコーディングを切り替え）
+        // 文字化けチェック（U+FFFD 置換文字が多ければ次のエンコーディングを試みる）
         const corruptCount = (text.match(/\uFFFD/g) ?? []).length;
-        if (corruptCount > 5 && encoding === "Shift-JIS") {
-          tryRead("UTF-8");
+        if (corruptCount > 5) {
+          if (encoding === "UTF-8") {
+            tryRead("Shift-JIS");
+          } else {
+            // それでもだめなら UTF-8 で強行
+            processText(text);
+          }
           return;
         }
-        setTradeCsvText(text);
-        const lines = text.trim().split("\n");
-        if (lines.length > 0) {
-          const delimiter = lines[0].includes("\t") ? "\t" : ",";
-          // \r\n 対応: 各セルから \r を除去
-          const headers = lines[0].split(delimiter).map((h) => h.trim().replace(/"/g, "").replace(/\r/g, ""));
-          setTradeHeaders(headers);
-
-          // ヘッダーと DEFAULT_TRADE_COL_MAP を照合して自動マッピング
-          const headerSet = new Set(headers);
-          const autoMap = { ...DEFAULT_TRADE_COL_MAP };
-          const colKeys: (keyof TradeHistoryColMap)[] = ["pair", "direction", "type", "lots", "price", "datetime"];
-          for (const key of colKeys) {
-            if (!headerSet.has(autoMap[key])) {
-              // デフォルト値がヘッダーにない場合、最初のヘッダーをセット
-              autoMap[key] = headers[0] ?? "";
-            }
-          }
-          setTradeColMap(autoMap);
-
-          const preview = lines.slice(1, 6).map((line) =>
-            line.split(delimiter).map((c) => c.trim().replace(/"/g, "").replace(/\r/g, ""))
-          );
-          setTradePreview(preview);
-        }
-        setTradeErrors([]);
+        processText(text);
       };
       reader.readAsText(file, encoding);
     };
-    // Shift-JISから試みる（引き継ぎメモ通り）
-    tryRead("Shift-JIS");
+    // UTF-8から試みる（BOM付きUTF-8も自動処理）
+    tryRead("UTF-8");
   }, []);
 
   const handleTradeImport = async () => {
